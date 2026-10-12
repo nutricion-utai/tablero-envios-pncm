@@ -104,9 +104,11 @@ const labI = t => { const k = ICO_TARJ[String(t).toLowerCase()];
   return '<span class="labw">'+(k?'<span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24">'+ICO[k]+'</svg></span>':'')+'<span class="lab">'+t+'</span></span>'; };
 function kpis(){
   const L = sel();
-  const enPad = new Set(L.filter(s=>s.padron).map(s=>s.cuiPad||s.cui));   // CUI del padrón (corregido si el envío trae otro)
-  const padTot = UT==='TODAS' ? D.padTotal : (D.padUT[UT]||0);
-  const utsCon = new Set(D.sa.filter(s=>s.padron).map(s=>s.ut)).size;
+  // los CUI que no están en el padrón también cuentan: se suman a los que enviaron y a los esperados
+  const enPad = new Set(L.map(s=>s.cuiPad||s.cui));   // CUI del padrón (corregido si el envío trae otro) o el del envío si no está en el padrón
+  const nFuera = L.filter(s=>!s.padron).length;
+  const padTot = (UT==='TODAS' ? D.padTotal : (D.padUT[UT]||0)) + nFuera;
+  const utsCon = new Set(D.sa.map(s=>s.ut)).size, utsTot = new Set(Object.keys(D.padUT).concat(D.sa.map(s=>s.ut))).size;
   const nin = sum(L.map(s=>s.ninos)), ac = sum(L.map(s=>s.acs));
   const pres = sum(L.map(s=>s.presT)), cost = sum(L.map(s=>s.costT));
   // costo promedio por día: costo total entre niño-días (o AC-días) del conjunto, según ámbito del Anexo A
@@ -116,8 +118,8 @@ function kpis(){
   const subAmb = i => '<span class="amb">'+[['Urbano',U,TARIFA.U[i]],['Rural o selva',R,TARIFA.R[i]]].map(([n,ss,t])=>{ const p=prom(ss,i);
       return '<span>'+n+' <b>'+(p!=null?S2(p):'—')+'</b> <span class="dir">de S/ '+nf2.format(t)+'</span></span>'; }).join('')+'</span>';
   const tiles = [
-    ['Servicios con envío vigente', nf0.format(enPad.size), 'de '+nf0.format(padTot)+' del padrón ('+P1(padTot?enPad.size/padTot:0)+')'],
-    UT==='TODAS' ? ['Unidades territoriales', nf0.format(utsCon), 'de '+Object.keys(D.padUT).length+' tienen al menos un envío'] : ['Envíos vigentes', nf0.format(L.length), 'incluye los CUI que no están en el padrón'],
+    ['Servicios con envío vigente', nf0.format(enPad.size), 'de '+nf0.format(padTot)+(nFuera?', con '+nFuera+' fuera del padrón':' del padrón')+' ('+P1(padTot?enPad.size/padTot:0)+')'],
+    UT==='TODAS' ? ['Unidades territoriales', nf0.format(utsCon), 'de '+utsTot+' tienen al menos un envío'] : ['Envíos vigentes', nf0.format(L.length), 'incluye los CUI que no están en el padrón'],
     ['Niñas y niños', nf0.format(nin), 'de 6 a 36 meses, según el pedido no perecible'],
     ['Actores comunales', nf0.format(ac), 'madres cuidadoras, madres guía y socias de cocina'],
     ['Costo del menú', S0(cost), P1(pres?cost/pres:0)+' del presupuesto calculado ('+S0(pres)+')'],
@@ -168,13 +170,14 @@ function coberturaNut(){
 
 // -------- avance (nacional)
 function avance(){
-  const env = {}; D.sa.filter(s=>s.padron).forEach(s=>{ (env[s.ut]=env[s.ut]||new Set()).add(s.cuiPad||s.cui); });
-  const rows = Object.keys(env).map(u=>({u, n:env[u].size, e:D.padUT[u]||0})).sort((a,b)=>b.n/b.e-a.n/a.e);
-  const tn = sum(rows.map(r=>r.n));
-  $('#avLede').textContent = 'Servicios alimentarios del padrón que ya tienen un envío vigente para '+mesTxt(D.periodo).replace(/ \d{4}$/,'')+'. Un envío vigente es el último que mandó cada servicio, identificado por su CUI del padrón; los anteriores quedan reemplazados.';
-  $('#avNote').textContent = tn + ' servicios alimentarios del padrón con envío vigente, en ' + rows.length + ' unidades territoriales.';
+  // los servicios con un CUI que no está en el padrón cuentan como enviados y se suman a los esperados de su UT/OCT
+  const env = {}, fu = {}; D.sa.forEach(s=>{ (env[s.ut]=env[s.ut]||new Set()).add(s.cuiPad||s.cui); if(!s.padron) fu[s.ut]=(fu[s.ut]||0)+1; });
+  const rows = Object.keys(env).map(u=>({u, n:env[u].size, f:fu[u]||0, e:(D.padUT[u]||0)+(fu[u]||0)})).sort((a,b)=>b.n/b.e-a.n/a.e);
+  const tn = sum(rows.map(r=>r.n)), tf = sum(rows.map(r=>r.f));
+  $('#avLede').textContent = 'Servicios alimentarios que ya tienen un envío vigente para '+mesTxt(D.periodo).replace(/ \d{4}$/,'')+'. Un envío vigente es el último que mandó cada servicio, identificado por su CUI del padrón; los anteriores quedan reemplazados. Los que enviaron con un CUI que no está en el padrón también se cuentan y se suman a los esperados de su UT/OCT.';
+  $('#avNote').textContent = tn + ' servicios alimentarios con envío vigente'+(tf?' ('+tf+' con CUI fuera del padrón)':'')+', en ' + rows.length + ' unidades territoriales.';
   $('#tAv').innerHTML = '<thead><tr><th>UT/OCT</th><th class="n">Esperados</th><th class="n">Enviaron</th><th>Avance</th><th class="n">%</th></tr></thead><tbody>'+
-    rows.map(r=>'<tr'+(UT===r.u?' style="background:var(--azul-soft)"':'')+'><td><a href="#" class="salink" data-ut="'+esc(UT===r.u?'TODAS':r.u)+'" title="'+(UT===r.u?'Quitar el filtro de UT':'Filtrar por '+esc(r.u))+'">'+esc(r.u)+'</a>'+(UT===r.u?' <span class="chip blue" style="margin-left:4px">filtro activo</span>':'')+'</td><td class="n">'+r.e+'</td><td class="n">'+r.n+'</td><td><div class="minibar"><span style="width:'+(r.e?r.n/r.e*100:0)+'%"></span></div></td><td class="n">'+nf0.format(r.e?r.n/r.e*100:0)+' %</td></tr>').join('')+'</tbody>';
+    rows.map(r=>'<tr'+(UT===r.u?' style="background:var(--azul-soft)"':'')+'><td><a href="#" class="salink" data-ut="'+esc(UT===r.u?'TODAS':r.u)+'" title="'+(UT===r.u?'Quitar el filtro de UT':'Filtrar por '+esc(r.u))+'">'+esc(r.u)+'</a>'+(UT===r.u?' <span class="chip blue" style="margin-left:4px">filtro activo</span>':'')+'</td><td class="n">'+r.e+(r.f?'<span style="display:block;font-size:11.5px;color:var(--muted)">incluye '+r.f+' fuera del padrón</span>':'')+'</td><td class="n">'+r.n+'</td><td><div class="minibar"><span style="width:'+(r.e?r.n/r.e*100:0)+'%"></span></div></td><td class="n">'+nf0.format(r.e?r.n/r.e*100:0)+' %</td></tr>').join('')+'</tbody>';
   const sin = Object.keys(D.padUT).filter(u=>!env[u]).sort();
   $('#sinEnv').innerHTML = '<b>Todavía sin envíos ('+sin.length+'):</b> '+sin.map(esc).join(', ')+'.';
   faltan(env);
@@ -353,7 +356,7 @@ function calidad(){
   resc.forEach(s=> partes.push(saA(s)+' (CUI '+s.cui+') envió el '+fh(s.fecha)+', pero ese envío había quedado reemplazado por el de otro servicio que usó su CUI; se recupera como su envío vigente'));
   if (partes.length) items.push([cuiMal.length+desc.length+resc.length, 'CUI que no corresponde al servicio', partes.join('; ')+'. El envío vigente, el avance y la unidad territorial se calculan con el CUI del padrón; conviene corregir el CUI en la herramienta.']);
   const fuera = S.filter(s=>!s.padron);
-  if (fuera.length) items.push([fuera.length, 'CUI que no está en el padrón', fuera.map(s=>saA(s)+' (CUI '+s.cui+', '+esc(s.utEnv)+')').join('; ')+'. No se cuenta en el avance.']);
+  if (fuera.length) items.push([fuera.length, 'CUI que no está en el padrón', fuera.map(s=>saA(s)+' (CUI '+s.cui+', '+esc(s.utEnv)+')').join('; ')+'. Se cuenta en el avance y se suma a los esperados de su UT/OCT.']);
   const enSel = new Set(S.map(s=>s.cui));
   const ded = S.filter(s=>s.ambDed);
   if (ded.length) items.push([ded.length, 'Comité de gestión fuera del listado de CG', 'No se encontró el código del comité en el listado de CG; su ámbito se dedujo del presupuesto registrado: '+ded.map(s=>saA(s)+' (CG '+esc(s.cg)+', código '+esc(s.cgCod||'sin código')+')').join('; ')+'.']);

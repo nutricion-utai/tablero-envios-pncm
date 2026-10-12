@@ -99,6 +99,8 @@ svg .ax{stroke:var(--rule);stroke-width:1}
 .seg button[aria-pressed="true"]{background:var(--azul);color:#fff}
 .chip{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:999px;background:var(--warn-soft);color:var(--warn);white-space:nowrap}
 .chip.blue{background:var(--azul-soft);color:var(--azul)}
+.chip.mag{background:var(--magenta-soft);color:var(--magenta)}
+.chip.gris{background:var(--bg);color:var(--muted);box-shadow:inset 0 0 0 1px var(--rule)}
 .obs{display:grid;gap:10px}
 .obs article{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:12px 16px}
 .obs .num{font-family:var(--f-display);font-stretch:85%;font-weight:800;font-size:26px;color:var(--warn);grid-row:span 2;min-width:2.2ch;text-align:right}
@@ -424,7 +426,7 @@ h3.ut-t .uttag{margin-right:6px}
         <p class="note" id="sinEnv" style="margin-top:10px"></p>
       </div>
       <div class="panel">
-        <h3>Envíos recibidos por día</h3>
+        <h3 class="ut-t">Envíos recibidos por día</h3>
         <p class="note">Incluye los envíos que luego fueron reemplazados por un reenvío.</p>
         <div class="legend"><span><i class="sw" style="background:var(--azul)"></i>Vigente</span><span><i class="sw" style="background:var(--magenta)"></i>Reemplazado por un reenvío</span></div>
         <div id="cDia"></div>
@@ -440,6 +442,11 @@ h3.ut-t .uttag{margin-right:6px}
     <h2>Alertas sobre los envíos</h2>
     <p class="lede">Las situaciones de Calidad de los datos que tienen que ver con los envíos mismos: CUI equivocados y reenvíos.</p>
     <div class="obs" id="obsEnv"></div>
+  </section>
+  <section id="ultimos">
+    <h2>Últimos envíos recibidos</h2>
+    <p class="lede" id="ultLede"></p>
+    <div class="panel"><div class="scroll"><table id="tUlt" class="cmp"></table></div></div>
   </section>
 </div>
 <div id="vMen" role="tabpanel" aria-labelledby="tbMen" hidden>

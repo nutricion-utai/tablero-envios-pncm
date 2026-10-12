@@ -196,8 +196,14 @@ function faltan(env){
   $('#tFalt').innerHTML = '<thead><tr><th class="n">N°</th><th>Servicio alimentario</th><th class="n">CUI</th><th>Comité de gestión</th><th>Distrito</th></tr></thead><tbody>'+
     fl.map((p,i)=>'<tr><td class="n">'+(i+1)+'</td><td>'+esc(p[2])+'</td><td class="n">'+esc(p[1])+'</td><td>'+esc(p[3])+'</td><td>'+esc(p[4])+'</td></tr>').join('')+'</tbody>';
 }
+// D.envs: todos los envíos del mes, del más reciente al más antiguo:
+// [recepción 'AAAA-MM-DD HH:MM', envío 'AAAA-MM-DD HH:MM', CUI del padrón, servicio, UT, vigente 1/0]
+const envsSel = () => (D.envs||[]).filter(r=>UT==='TODAS' || r[4]===UT);
 function porDia(){
-  const rows = D.porDia; // [dia, NO, SI]
+  let rows = D.porDia; // [dia, NO, SI]
+  if (D.envs){ const m = {}; envsSel().forEach(r=>{ const d=r[1].slice(0,10), o=m[d]||(m[d]=[0,0]); o[r[5]?1:0]++; });
+    rows = Object.keys(m).sort().map(d=>[d, m[d][0], m[d][1]]); }
+  if (!rows.length){ $('#cDia').innerHTML = '<p class="note">Sin envíos para esta selección.</p>'; return; }
   const W=520,H=210,L=34,B=34,T=14,R=8, n=rows.length;
   const max = Math.max(...rows.map(r=>r[1]+r[2]));
   const step = Math.ceil(max/4/5)*5 || 5, top = Math.ceil(max/step)*step;
@@ -217,6 +223,26 @@ function porDia(){
        '<text x="'+cx+'" y="'+(H-B+18)+'" text-anchor="middle">'+dd+'</text></g>';
   });
   $('#cDia').innerHTML = '<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Envíos por día">'+g+'</svg>';
+}
+
+// -------- últimos envíos recibidos (con una UT/OCT filtrada, solo los de esa UT/OCT)
+function ultimos(){
+  const box = $('#ultimos'); if (!box) return;
+  if (!D.envs){ box.hidden = true; return; }
+  box.hidden = false;
+  const tot = UT==='TODAS', A = D.envs, re = new Array(A.length), visto = {};
+  for (let i=A.length-1; i>=0; i--){ re[i] = !!visto[A[i][2]]; visto[A[i][2]] = 1; }   // reenvío: el mismo servicio ya había enviado
+  const L = A.map((r,i)=>({r, re:re[i]})).filter(o=>tot || o.r[4]===UT), top = L.slice(0,10);
+  const fh = f => f.slice(8,10)+'/'+f.slice(5,7)+' '+f.slice(11,16);
+  const mes = mesTxt(D.periodo).replace(/ \d{4}$/,'');
+  $('#ultLede').textContent = (L.length>10 ? 'Los 10 envíos más recientes' : L.length===1 ? 'El único envío' : 'Los '+L.length+' envíos')+
+    ' para '+mes+(tot ? ', de todas las UT/OCT' : ' de '+UT)+', del más reciente al más antiguo. Un reenvío reemplaza al envío anterior del mismo servicio alimentario.';
+  if (!top.length){ $('#tUlt').innerHTML = ''; $('#ultLede').textContent = 'Todavía no hay envíos para '+mes+(tot?'':' de '+UT)+'.'; return; }
+  $('#tUlt').innerHTML = '<thead><tr><th>Recibido</th>'+(tot?'<th>UT/OCT</th>':'')+'<th>Servicio alimentario</th><th class="n">CUI</th><th>Estado</th></tr></thead><tbody>'+
+    top.map(({r,re})=>{ const s = r[5] && byCui[r[2]];
+      return '<tr><td style="white-space:nowrap">'+fh(r[0])+'</td>'+(tot?'<td>'+utLink(r[4])+'</td>':'')+'<td>'+(s?saA(s):esc(r[3]))+'</td><td class="n">'+esc(r[2])+'</td><td style="white-space:nowrap">'+
+        (r[5]?'<span class="chip blue">Vigente</span>':'<span class="chip mag" title="El mismo servicio volvió a enviar; cuenta el envío más reciente">Reemplazado</span>')+
+        (re?' <span class="chip gris" title="El servicio ya había enviado antes en este mes">Reenvío</span>':'')+'</td></tr>'; }).join('')+'</tbody>';
 }
 
 // -------- presupuesto
@@ -1011,11 +1037,11 @@ function titulosUT(){
     const chip = h.querySelector('.chip, .nut-src'); chip ? h.insertBefore(t, chip) : h.appendChild(t);
   });
 }
-function render(){ titulosUT(); kpis(); coberturaNut(); avance(); calidad(); ejec(); nino(); foods(); alertasAporte(); resumenCob(); resumenMacro(); graficoMacro(); alertasMacro(); prov(); detalle(); if(!$('#vMen').hidden) menuSemanal(true); }
+function render(){ titulosUT(); kpis(); coberturaNut(); avance(); porDia(); ultimos(); calidad(); ejec(); nino(); foods(); alertasAporte(); resumenCob(); resumenMacro(); graficoMacro(); alertasMacro(); prov(); detalle(); if(!$('#vMen').hidden) menuSemanal(true); }
 const E0 = arguments[2];
 if (E0){ if (E0.SA) SA=E0.SA; if (E0.UT && (E0.UT==='TODAS' || uts.includes(E0.UT))){ UT=E0.UT; $('#fUT').value=UT; } if (E0.SEM!=null) SEM=E0.SEM; openCui=E0.openCui; sortK=E0.sortK; sortD=E0.sortD; macSel=E0.macSel; macVista=E0.macVista; $('#q').value=E0.q||''; DIA=E0.DIA; DIAkey=E0.DIAkey; FOCO=E0.FOCO;
   if (E0.metric==='kg'){ metric='kg'; $('#mK').setAttribute('aria-pressed','true'); $('#mS').setAttribute('aria-pressed','false'); } }
-porDia(); render();
+render();
 if(location.hash==='#menu-semanal') tab('menu'); else if(location.hash==='#envios') tab('env');
 return { estado: () => ({SA, UT, SEM, openCui, sortK, sortD, metric, macSel, macVista, q:$('#q').value, DIA, DIAkey, FOCO}) };
 }

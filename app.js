@@ -185,9 +185,10 @@ function avance(){
 // con una UT/OCT filtrada: servicios de su padrón que todavía no tienen envío vigente en el mes
 function faltan(env){
   const box = $('#faltan'); if (!box) return;
-  if (UT==='TODAS' || !window.__PAD){ box.hidden = true; return; }
+  const PADL = D.pad || window.__PAD;   // padrón del periodo; si no hay, el general
+  if (UT==='TODAS' || !PADL){ box.hidden = true; return; }
   const ya = env[UT] || new Set();
-  const pad = window.__PAD.filter(p=>p[0]===UT);
+  const pad = PADL.filter(p=>p[0]===UT);
   const fl = pad.filter(p=>!ya.has(p[1])).sort((a,b)=>a[3].localeCompare(b[3],'es') || a[2].localeCompare(b[2],'es'));
   box.hidden = false;
   const mes = mesTxt(D.periodo).replace(/ \d{4}$/,'');
@@ -499,7 +500,7 @@ function drawer(){
   hbars($('#dF'), f.slice(0,10).map(r=>({name:D.alimentos[r[1]][0], value:r[4], color:r[2]?'var(--magenta)':'var(--azul)', label:S0(r[4]), tip:esc(D.alimentos[r[1]][0])+'<br>'+nf1.format(r[3])+' kg o L · '+P1(tf?r[4]/tf:0)})), {});
 }
 
-$('#foot').innerHTML = 'Fuente: libro CONSOLIDADO_'+D.periodo+' de la carpeta ENVIOS_HERRAMIENTA_PNCM (hojas ENVIOS, MENUPROG, PNP, PPTOTAL y COTIZACIONES) y padrón de '+D.padTotal+' servicios alimentarios (seguimiento de funcionamiento de agosto de 2026, sin los que no usan sus instalaciones y no tienen trámite de cierre en el Sistema Integrado). Los proveedores son los adjudicados a cada comité de gestión según la hoja RESULTADOS CG del Seguimiento Adquisición Alimentos 2026'+(D.adjCorte?' ('+D.adjCorte+')':'')+', con la razón social y el RUC estandarizados de la hoja RESULTADOS ZONAS (revisada con SUNAT); las diferencias con lo registrado en el envío se señalan en Calidad de los datos. Solo se usan envíos vigentes. La unidad territorial de cada servicio es la del padrón cuando su CUI figura en él. Los montos están en soles.';
+$('#foot').innerHTML = 'Fuente: libro CONSOLIDADO_'+D.periodo+' de la carpeta ENVIOS_HERRAMIENTA_PNCM (hojas ENVIOS, MENUPROG, PNP, PPTOTAL y COTIZACIONES) y padrón de '+D.padTotal+' servicios alimentarios '+((D.padRef && D.padRef.sa && D.padRef.sa!=='PADRON_SA.csv') ? 'del archivo '+esc(D.padRef.sa)+(D.padRef.ex?', sin los de '+esc(D.padRef.ex):'')+'.' : '(seguimiento de funcionamiento de agosto de 2026, sin los que no usan sus instalaciones y no tienen trámite de cierre en el Sistema Integrado).')+' Los proveedores son los adjudicados a cada comité de gestión según la hoja RESULTADOS CG del Seguimiento Adquisición Alimentos 2026'+(D.adjCorte?' ('+D.adjCorte+')':'')+', con la razón social y el RUC estandarizados de la hoja RESULTADOS ZONAS (revisada con SUNAT); las diferencias con lo registrado en el envío se señalan en Calidad de los datos. Solo se usan envíos vigentes. La unidad territorial de cada servicio es la del padrón cuando su CUI figura en él. Los montos están en soles.';
 
 
 // ================= MENÚ SEMANAL =================

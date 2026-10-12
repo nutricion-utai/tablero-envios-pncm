@@ -14,7 +14,7 @@ const db = getFirestore(initializeApp({
 const $ = s => document.querySelector(s);
 const SHELL = [...document.body.children].filter(n => n.tagName !== 'SCRIPT').map(n => n.outerHTML).join('');
 let AC = new AbortController(), app = null, Dact = null;
-let mes = null, meta = null, uts = null, montado = false, tEspera = 0, nSus = 0;
+let mes = null, meta = null, uts = null, padMes = null, montado = false, tEspera = 0, nSus = 0;   // padMes: padrón del mes (periodos/{mes}/ref/padron)
 let subs = [];
 const DET = {}, DETP = {};          // detalle de cada envío (no cambia: se descarga una sola vez)
 window.__MESES = []; window.__ENVVIG = {};
@@ -52,6 +52,7 @@ function montar(conservar) {
   if (!meta || !uts) return;
   const vista = vistaAct(), y = window.scrollY, E = (conservar && app) ? app.estado() : null;
   const D = Armar.armarD(JSON.parse(meta), [...uts.values()].flatMap(t => JSON.parse(t).sa));
+  D.pad = padMes;   // si es null, la página usa el padrón general (tablero/padron)
   Dact = D;
   AC.abort(); AC = new AbortController();
   [...document.body.children].filter(n => n.tagName !== 'SCRIPT').forEach(n => n.remove());
@@ -74,11 +75,13 @@ function programar(inmediato) {
 
 function suscribirMes(p, conservarVista) {
   subs.forEach(u => u()); subs = [];
-  mes = p; meta = null; uts = null; const n = ++nSus;
+  mes = p; meta = null; uts = null; padMes = null; const n = ++nSus;
   const primero = !montado;
   if (!primero) { montado = false; estado('Cargando ' + p + '…'); }
   const listo = () => { if (n !== nSus || !meta || !uts) return; if (!montado) { montar(false); const f = $('#fMes'); if (f && !primero) f.focus(); } else programar(false); };
   subs.push(onSnapshot(doc(db, 'periodos', p), sn => { if (!sn.exists()) { estado('Todavía no hay datos publicados para ' + p); return; } meta = sn.data().d; listo(); }, err => estado('No se pudo leer la base de datos: ' + err.message)));
+  subs.push(onSnapshot(doc(db, 'periodos', p, 'ref', 'padron'), sn => { try { padMes = sn.exists() ? JSON.parse(sn.data().d) : null; } catch (_) { padMes = null; }
+    if (n === nSus && montado) programar(true); }, () => {}));
   subs.push(onSnapshot(collection(db, 'periodos', p, 'ut'), qs => { const m = new Map(); qs.forEach(d => m.set(d.id, d.data().d)); uts = m; listo(); }, err => estado('No se pudo leer la base de datos: ' + err.message)));
 }
 
@@ -91,7 +94,7 @@ window.__cambiarMes = p => {
 };
 
 estado('Conectando con la base de datos…');
-// padrón de servicios alimentarios (para la lista de los que aún no envían, con una UT filtrada)
+// padrón general (respaldo si el mes no tiene su propio padrón publicado)
 onSnapshot(doc(db, 'tablero', 'padron'), sn => { try { window.__PAD = sn.exists() ? JSON.parse(sn.data().d) : null; } catch (_) { window.__PAD = null; } if (montado) programar(true); }, () => {});
 onSnapshot(doc(db, 'tablero', 'vivo'), sn => { try { AVISOS = sn.exists() ? (JSON.parse(sn.data().d).lista || []) : []; } catch (_) { AVISOS = []; } if (montado) estadoOk(); }, () => {});
 onSnapshot(doc(db, 'tablero', 'meses'), sn => {

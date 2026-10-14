@@ -98,7 +98,7 @@ $('#fMes').innerHTML = window.__MESES.map(p=>'<option value="'+p+'">'+mesTxt(p).
 $('#fMes').value = D.periodo;
 $('#fMes').addEventListener('change', e => window.__cambiarMes(e.target.value));
 $('#hMeta').innerHTML = 'Datos al ' +
-  D.corte.slice(8,10)+'/'+D.corte.slice(5,7)+'/'+D.corte.slice(0,4)+', '+D.corte.slice(11)+' h. ' +
+  (/^\d{4}-\d{2}-\d{2}/.test(String(D.corte)) ? D.corte.slice(8,10)+'/'+D.corte.slice(5,7)+'/'+D.corte.slice(0,4)+', '+D.corte.slice(11)+' h. ' : '— (sin fecha de corte). ') +
   D.envTotal + (D.envTotal===1?' envío recibido':' envíos recibidos') + ' para ' + mesTxt(D.periodo) + (D.envTotal===1 ? (D.envVig?', vigente.':'.') : ', de los cuales ' + D.envVig + (D.envVig===1?' está vigente.':' están vigentes.'));
 
 // -------- helpers de gráficos
@@ -241,7 +241,7 @@ function faltan(env){
 const envsSel = () => (D.envs||[]).filter(envFiltro());
 function porDia(){
   let rows = D.porDia; // [dia, NO, SI]
-  if (D.envs){ const m = {}; envsSel().forEach(r=>{ const d=r[1].slice(0,10), o=m[d]||(m[d]=[0,0]); o[r[5]?1:0]++; });
+  if (D.envs){ const m = {}; envsSel().forEach(r=>{ if(!/^\d{4}-\d{2}-\d{2}/.test(r[1])) return; const d=r[1].slice(0,10), o=m[d]||(m[d]=[0,0]); o[r[5]?1:0]++; });
     rows = Object.keys(m).sort().map(d=>[d, m[d][0], m[d][1]]); }
   if (!rows.length){ $('#cDia').innerHTML = '<p class="note">Sin envíos para esta selección.</p>'; return; }
   const W=520,H=210,L=34,B=34,T=14,R=8, n=rows.length;
@@ -273,7 +273,7 @@ function ultimos(){
   const tot = UT==='TODAS', A = D.envs, re = new Array(A.length), visto = {};
   for (let i=A.length-1; i>=0; i--){ re[i] = !!visto[A[i][2]]; visto[A[i][2]] = 1; }   // reenvío: el mismo servicio ya había enviado
   const ok = envFiltro(), L = A.map((r,i)=>({r, re:re[i]})).filter(o=>ok(o.r)), top = L.slice(0,10);
-  const fh = f => f.slice(8,10)+'/'+f.slice(5,7)+' '+f.slice(11,16);
+  const fh = f => /^\d{4}-\d{2}-\d{2}/.test(f) ? f.slice(8,10)+'/'+f.slice(5,7)+' '+f.slice(11,16) : 'sin fecha';
   const mes = mesTxt(D.periodo).replace(/ \d{4}$/,'');
   $('#ultLede').textContent = (L.length>10 ? 'Los 10 envíos más recientes' : L.length===1 ? 'El único envío' : 'Los '+L.length+' envíos')+
     ' para '+mes+(tot ? ', de todas las UT/OCT' : ' '+deSel())+', del más reciente al más antiguo. Un reenvío reemplaza al envío anterior del mismo servicio alimentario.';

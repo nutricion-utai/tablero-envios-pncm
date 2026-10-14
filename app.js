@@ -424,7 +424,8 @@ let sortK = 'ejec', sortD = -1, openCui = null;
 const cols = [
   ['sa','Servicio alimentario',s=>'<span class="nmsa">'+esc(s.sa)+'</span>'+(s.padron?'':' <span class="chip">fuera del padrón</span>')+(s.twin.length?' <span class="chip">CUI duplicado</span>':'')],
   ['apMal','Aporte nutricional',s=>{ if(!s.dias) return '—'; const r=evaluarAporte(s); const n=r.malos.length;
-      return n ? lnkDias(s,r.malos,'Días bajo la meta del Programa','<span class="chip">'+n+' día'+(n===1?'':'s')+' bajo la meta</span>','chipl') : '<span class="chip ok">Cumple</span>'; }],
+      const dd = n ? diasDz(s) : [];
+      return n ? lnkDias(s,r.malos,'Días bajo la meta del Programa','<span class="chip">'+n+' día'+(n===1?'':'s')+' bajo la meta</span>','chipl')+(dd.length?'<br>'+chipDz(s,dd):'') : '<span class="chip ok">Cumple</span>'; }],
   ['ninos','Niños · AC',s=>s.ninos+' · '+s.acs,1],
   ['amb','Ámbito',s=>AMB[s.amb]+(s.rn?'<br><span style="color:var(--muted);font-size:12px">'+esc(s.rn)+'</span>':'')+(s.ambDed?' <span class="chip" title="El comité de gestión no figura en el listado de CG; el ámbito se dedujo del presupuesto registrado">deducido</span>':'')], ['costT','Costo<br>presupuesto',s=>S0(s.costT)+'<span class="sub2">'+S0(s.presT)+'</span>',1], ['ejec','Uso',s=>nf0.format(s.ejec*100)+' %',1],
   ['ninoDia','S/ por día<br>niño · AC',s=>nf2.format(s.ninoDia)+' · '+nf2.format(s.acDia),1], ['reenv','Reenvíos',s=>s.reenv,1], ['fecha','Último<br>envío',s=>s.fecha.slice(8,10)+'/'+s.fecha.slice(5,7)+'<span class="sub2">'+s.fecha.slice(11)+'</span>']
@@ -581,6 +582,7 @@ window.addEventListener('resize', cabProg, {signal:AC.signal});
 { const bar=document.querySelector('.bar'); if(bar) bar.addEventListener('transitionend', cabProg, {signal:AC.signal}); }
 function hoja(){
   const s = SA && byCui[SA];
+  { const zb = $('#dzBox'); if (zb){ zb.innerHTML=''; zb.hidden = true; } }
   if(!s){ $('#sheet').innerHTML='<p class="note">No hay servicios con menú en esta selección.</p>'; $('#sheetNote').textContent=''; return; }
   if(!D._det[SA]){ $('#sheet').innerHTML='<p class="note">Cargando el menú de este servicio…</p>'; $('#sheetNote').textContent=''; return; }
   const sems = semanasDe(SA); const w = sems.find(x=>x.s===SEM); if(!w){ $('#sheet').innerHTML=''; return; }
@@ -603,13 +605,14 @@ function hoja(){
     '<div class="t">PROGRAMACIÓN DEL MENÚ CG '+esc(s.cg)+' - S.A. '+esc(s.sa)+'<span>'+ORD[SEM-1]+' Semana</span></div>'+
     '<div class="r">MES Y AÑO: <u>'+MESES[mesNum-1]+'</u> <u>'+anio+'</u></div></div>';
   const fo = (FOCO && FOCO.cui===SA) ? FOCO : null;
-  if (fo) h += '<div class="foco" role="status"><span class="fm"><b>'+esc(fo.mot)+'</b>'+(fo.dias.length>1?' · '+fo.dias.length+' días':'')+'</span><span class="fd">'+fo.dias.map(d=>'<button type="button" data-fo="'+d.f+'" data-fs="'+d.s+'" aria-pressed="'+(d.f===fo.f)+'">'+DIAS[(pd(d.f).getDay()+6)%7].slice(0,3).toLowerCase()+' '+ddmm(pd(d.f))+'</button>').join('')+'</span><button type="button" class="fx" data-fox aria-label="Quitar el resaltado">×</button></div>';
+  const zz = dzDe(s), dzK = {}; Object.keys(zz).forEach(f=>zz[f].forEach(o=>{ dzK[f+'|'+o[0]] = 1; }));
+  if (fo) h += '<div class="foco" role="status"><span class="fm"><b>'+esc(fo.mot)+'</b>'+(fo.dias.length>1?' · '+fo.dias.length+' días':'')+'</span><span class="fd">'+fo.dias.map(d=>'<button type="button" data-fo="'+d.f+'" data-fs="'+d.s+'" aria-pressed="'+(d.f===fo.f)+'">'+DIAS[(pd(d.f).getDay()+6)%7].slice(0,3).toLowerCase()+' '+ddmm(pd(d.f))+'</button>').join('')+'</span>'+(zz[fo.f]&&fechasV.includes(fo.f)?'<button type="button" class="dzgo" data-dzgo="'+fo.f+'">Ver dosificación y sugerencias</button>':'')+'<button type="button" class="fx" data-fox aria-label="Quitar el resaltado">×</button></div>';
   h += dsel;
   // Una sola tabla para el menú y el aporte: cada día ocupa 4 columnas (una por grupo de edad), así las columnas de los días
   // quedan alineadas y la cabecera de días es una sola, fija al bajar.
   const subW = uno ? '13%' : (79/(4*IX.length)).toFixed(3)+'%';
   h += '<table class="mt'+(uno?' uno':'')+'"><colgroup>'+(uno?'<col style="width:30%"><col style="width:18%">':'<col style="width:13%"><col style="width:8%">')+IX.map(()=>('<col style="width:'+subW+'">').repeat(4)).join('')+'</colgroup><thead><tr><th>COMIDA</th><th>GRUPO</th>'+
-    fechasV.map((f,i)=>'<th colspan="4" class="d'+(fo&&f===fo.f?' fo':'')+'">'+(aten[i]?DD[i]+'<small>'+ddmm(pd(f))+'/'+f.slice(0,4)+'</small>':'SIN ATENCIÓN<small>'+DD[i].toLowerCase()+' '+ddmm(pd(f))+'</small>')+'</th>').join('')+'</tr></thead><tbody>';
+    fechasV.map((f,i)=>'<th colspan="4" class="d'+(fo&&f===fo.f?' fo':'')+'">'+(aten[i]?DD[i]+'<small>'+ddmm(pd(f))+'/'+f.slice(0,4)+'</small>'+(zz[f]?'<a href="#dz-'+f+'" class="dzt" data-dzgo="'+f+'" data-tip="No cumple dosificaciones del Anexo N° 2 · toque para ver el detalle y las sugerencias">dosificación</a>':''):'SIN ATENCIÓN<small>'+DD[i].toLowerCase()+' '+ddmm(pd(f))+'</small>')+'</th>').join('')+'</tr></thead><tbody>';
   FILAS.forEach((r,ri)=>{
     h += '<tr>';
     if(r.hora!==undefined){ const sp = r.span?' rowspan="'+r.span+'"':'';
@@ -620,13 +623,14 @@ function hoja(){
       const fc = f===foF ? ' fo' : '';
       if(!aten[i]) h += '<td colspan="4" class="c sa'+fc+'">-</td>';
       else if(!c) h += '<td colspan="4" class="c vacio'+fc+'"><span class="cod">&nbsp;</span>-</td>';
-      else h += '<td colspan="4" class="c rcx'+fc+'" tabindex="0" role="button" data-rc="'+f+'|'+r.k+'" aria-label="Ver receta: '+esc(D.preps[c[1]])+'"><span class="cod">'+(c[0]!=null?c[0]:'')+'</span>'+esc(D.preps[c[1]])+'</td>';
+      else h += '<td colspan="4" class="c rcx'+fc+(dzK[f+'|'+r.k]?' dz':'')+'" tabindex="0" role="button" data-rc="'+f+'|'+r.k+'" aria-label="Ver receta: '+esc(D.preps[c[1]])+(dzK[f+'|'+r.k]?' (no cumple dosificaciones)':'')+'"'+(dzK[f+'|'+r.k]?' data-tip="Dosificación por debajo del mínimo o igual en todos los grupos (Anexo N° 2) · toque para ver la receta"':'')+'><span class="cod">'+(c[0]!=null?c[0]:'')+'</span>'+esc(D.preps[c[1]])+'</td>';
     });
     h += '</tr>';
   });
   h += '<tr><th class="rh">AGUA SEGURA<small>Durante la jornada</small></th><th class="rh">TODOS</th>'+fechasV.map((f,i)=>'<td colspan="4" class="c agua'+(aten[i]?'':' sa')+(f===foF?' fo':'')+'">'+(aten[i]?'AGUA SEGURA':'-')+'</td>').join('')+'</tr></tbody>';
   h += bloqueAporte(s, fechasV, aten, cell, uno, IX, foF) + '</table>';
   const sh = $('#sheet'); sh.classList.toggle('uno', uno); sh.innerHTML = h;
+  const zb = $('#dzBox'); if (zb){ const ph = panelDz(s, fechasV.filter((f,i)=>aten[i])); zb.innerHTML = ph; zb.hidden = !ph; }
   // resalta en el bloque de aporte las 4 columnas del día señalado
   if (foF){ const di = fechasV.indexOf(foF); if (di>=0) sh.querySelectorAll('tbody.ap tr').forEach(tr=>{ let col=0; [...tr.cells].forEach(c=>{ const a=col, b=col+c.colSpan-1; col+=c.colSpan;
     const lo=2+4*di, hi=lo+3; if (a>=lo && b<=hi){ c.classList.add('fo'); if(a===lo) c.classList.add('fol'); if(b===hi) c.classList.add('for'); } }); }); }
@@ -739,12 +743,19 @@ function tarjeta(cui, f, k){
     '<button type="button" class="rc-x" id="rcX" aria-label="Cerrar">×</button></div>';
   if(!rec){ h += '<p>Esta preparación no figura en el recetario enviado por el servicio alimentario, así que no se puede mostrar su dosificación.</p>'; }
   else {
-    const filas = rec[1].filter(r=>grs.some(gi=>r[1+gi]>0)).map(r=>({r, g:grupoIng(r[0])}))
+    const dia = evaluarAporte(s).malos.some(m=>m.f===f), gsR = gsDe(s,k), mk = {};
+    const obsR = dia && gsR.length ? Dosif.revisar(LET[k], rec[0], filas6(rec[1]), gsR) : [];
+    obsR.forEach(o=>{ if(o.t==='bajo') o.ids.forEach(i=>{ mk[i+'|'+o.g] = ['bajo', 'Por debajo del mínimo del Anexo N° 2: '+gramos(o.min)+(o.ids.length>1?' entre '+o.ids.length+' alimentos':'')+' ('+Dosif.NOMT[o.tabla]+')']; });
+      else o.ids.forEach(i=>o.gs.forEach((g,x)=>{ if(!mk[i+'|'+g]) mk[i+'|'+g] = ['igual', 'Misma cantidad en todos los grupos; el Anexo N° 2 la diferencia (mínimo '+gramos(o.mins[x])+' en '+GRC[g]+')']; })); });
+    const filas = rec[1].map((r,i)=>({r,i})).filter(o=>grs.some(gi=>o.r[1+gi]>0)).map(o=>({r:o.r, i:o.i, g:grupoIng(o.r[0])}))
       .sort((a,b)=> a.g.o-b.g.o || Math.max(...grs.map(gi=>b.r[1+gi]||0))-Math.max(...grs.map(gi=>a.r[1+gi]||0)));
     let gAnt = null;
     h += '<div class="scroll"><table class="rc rcg"><thead><tr><th>Alimento</th>'+grs.map(gi=>'<th class="n">'+GRC[gi]+'</th>').join('')+'<th class="n">S/ por kg</th></tr></thead><tbody>'+
-      filas.map(({r,g})=>{ const m=D.ing[r[0]]; const cab = g.o!==gAnt ? '<tr class="gh"><td colspan="'+(grs.length+2)+'" style="--gc:var(--ga-'+g.c+')"><span class="gdot"></span>'+g.n+'</td></tr>' : ''; gAnt = g.o; return cab+'<tr class="gi" style="--gc:var(--ga-'+g.c+')"><td>'+esc(m[0])+(m[6]<1?' <span class="pc" data-tip="Parte comestible '+nf0.format(m[6]*100)+' %">'+nf0.format(m[6]*100)+' %</span>':'')+'</td>'+grs.map(gi=>'<td class="n">'+(r[1+gi]?nf1.format(r[1+gi])+' g':'—')+'</td>').join('')+'<td class="n">'+(P[r[0]]?((((D.equiv||{})[cui]||{})[r[0]])?'<span class="pc" data-tip="El servicio no cotizó este alimento; se usa el precio de '+esc(D.equiv[cui][r[0]])+'">precio de '+esc(D.equiv[cui][r[0]].toLowerCase())+'</span> ':'')+nf2.format(P[r[0]]):(/^AGUA/.test(m[0])?'—':'<span class="pc" data-tip="El servicio no cotizó un alimento con este nombre; la herramienta tampoco le asigna costo">sin cotización</span>'))+'</td></tr>'; }).join('')+
+      filas.map(({r,i,g})=>{ const m=D.ing[r[0]]; const cab = g.o!==gAnt ? '<tr class="gh"><td colspan="'+(grs.length+2)+'" style="--gc:var(--ga-'+g.c+')"><span class="gdot"></span>'+g.n+'</td></tr>' : ''; gAnt = g.o; return cab+'<tr class="gi" style="--gc:var(--ga-'+g.c+')"><td>'+esc(m[0])+(m[6]<1?' <span class="pc" data-tip="Parte comestible '+nf0.format(m[6]*100)+' %">'+nf0.format(m[6]*100)+' %</span>':'')+'</td>'+grs.map(gi=>{ const x=mk[i+'|'+gi]; return '<td class="n'+(x?' '+x[0]:'')+'"'+(x?' data-tip="'+esc(x[1])+'"':'')+'>'+(r[1+gi]?nf1.format(r[1+gi])+' g':'—')+'</td>'; }).join('')+'<td class="n">'+(P[r[0]]?((((D.equiv||{})[cui]||{})[r[0]])?'<span class="pc" data-tip="El servicio no cotizó este alimento; se usa el precio de '+esc(D.equiv[cui][r[0]])+'">precio de '+esc(D.equiv[cui][r[0]].toLowerCase())+'</span> ':'')+nf2.format(P[r[0]]):(/^AGUA/.test(m[0])?'—':'<span class="pc" data-tip="El servicio no cotizó un alimento con este nombre; la herramienta tampoco le asigna costo">sin cotización</span>'))+'</td></tr>'; }).join('')+
       '</tbody></table></div>';
+    if (obsR.length) h += '<p class="rc-dz"><span class="chip mag">No cumple dosificaciones</span> Este día no alcanza la meta del Programa y la receta tiene '+
+      [obsR.some(o=>o.t==='bajo')?'<span class="bajo">alimentos por debajo del mínimo</span>':'', obsR.some(o=>o.t!=='bajo')?'<span class="igual">alimentos con la misma cantidad en todos los grupos</span>':''].filter(Boolean).join(' y ')+
+      ' del Anexo N° 2 (toque la cantidad para ver el mínimo). Las sugerencias de cambio están debajo del menú semanal.</p>';
     const ap = grs.map(gi=>aporteReceta(cui,key,gi));
     h += '<h4 class="rc-sub">Costo y aporte por ración</h4><div class="scroll"><table class="rc"><thead><tr><th></th>'+grs.map(gi=>'<th class="n">'+GRC[gi]+'</th>').join('')+'</tr></thead><tbody>'+
       '<tr><td>Costo</td>'+ap.map(a=>'<td class="n">S/ '+nf2.format(a[5])+'</td>').join('')+'</tr>'+
@@ -764,6 +775,7 @@ function tarjeta(cui, f, k){
 function cerrarTarjeta(){ $('#rcOv').hidden = true; document.body.style.overflow=''; if(window.__lastCell) window.__lastCell.focus(); }
 $('#rcOv').addEventListener('click', e=>{ if(e.target.id==='rcOv') cerrarTarjeta(); });
 on('keydown', e=>{ if(e.key==='Escape' && !$('#rcOv').hidden) cerrarTarjeta(); });
+on('click', e=>{ const b=e.target.closest('[data-dzgo]'); if(!b) return; e.preventDefault(); e.stopPropagation(); const t=document.getElementById('dz-'+b.dataset.dzgo); if(t){ t.scrollIntoView({behavior:'smooth', block:'start'}); t.classList.add('dzfl'); setTimeout(()=>t.classList.remove('dzfl'), 1600); } });
 $('#sheet').addEventListener('click', e=>{ const x=e.target.closest('[data-fox]'); if(x){ FOCO=null; hoja(); return; }
   const fb=e.target.closest('[data-fo]'); if(fb && FOCO){ window.__verMenu(FOCO.cui, +fb.dataset.fs, {f:fb.dataset.fo, mot:FOCO.mot, dias:FOCO.dias}); return; } });
 $('#sheet').addEventListener('click', e=>{ const b=e.target.closest('[data-dia]'); if(!b) return; DIA=+b.dataset.dia; hoja(); const nb=$('#sheet [data-dia="'+DIA+'"]'); if(nb) nb.focus(); });
@@ -798,6 +810,225 @@ function evaluarAporte(s){
     if (falla.nut.size){ res.malos.push({f, s:d.s, nut:[...falla.nut], gr:[...falla.gr]}); falla.nut.forEach(j=>res.porNut[j]++); falla.gr.forEach(g=>res.grupos[g]++); }
   });
   return apCache[s.cui] = res;
+}
+// ================= DOSIFICACIÓN DE LAS RECETAS (ANEXO N° 2) =================
+// Se revisa solo en los días que no alcanzan la meta del Programa: una receta "no cumple dosificaciones" si algún alimento que define
+// el aporte (lácteos, carnes, vísceras, pescado, huevo, leguminosas, tubérculos, cereales y harinas, aceites, frutas, alimento infantil)
+// está por debajo del mínimo del Anexo N° 2 para un grupo de edad, o lleva la misma cantidad en todos los grupos cuando el anexo la diferencia.
+// Dosificación según el Anexo N° 2 del Procedimiento "Atención alimentaria y nutricional" v3 (RDE 000100-2026-MIDIS/PNCM-DE)
+// Mínimos por grupo etario [6-8, 9-11, 12-23, 24-36] para los alimentos que definen el aporte.
+const Dosif = (function(){
+  const sinT = s => String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase();
+  const T = {
+    lacEvR:[50,50,60,60], lacUhtR:[100,100,120,120], lacEvA:[10,10,20,20], lacUhtA:[20,20,40,40], quesoA:[5,5,7,7],
+    animSolo:[50,50,50,50], animComb:[30,30,30,30], sbComb:[20,20,20,20], animMaz:[10,10,10,10],
+    huevoMain:[0,60,60,60], huevoLig:[0,6,6,6], yema:[20,20,0,0], ovo:[10,10,10,15],
+    legA:[20,20,25,35], tubA:[30,30,30,50], tubPure:[50,50,80,80], papaSeca:[0,30,35,40],
+    arroz:[0,35,50,60], arrozPpal:[0,40,70,80], fideo:[25,25,45,45], fideoPpal:[0,35,60,65], granoA:[10,20,30,30], espA:[4,4,5,5],
+    aceite68:[7,0,0,0], aceiteA:[0,11,15,17],
+    harina1:[14,16,22,24], harina1e:[10,12,17,19], harina2:[7,8,11,12], esp:[4,4,5,5], enteroMaz:[15,24,30,36],
+    frutaF:[40,50,80,100], alimInf:[50,50,50,50]
+  };
+  const NOMT = {lacEvR:'Lácteos · mazamorras (leche evaporada)', lacUhtR:'Lácteos · mazamorras (leche UHT)', lacEvA:'Lácteos · otros (leche evaporada en chupes, cremas u otros)', lacUhtA:'Lácteos · otros (leche UHT en chupes, cremas u otros)', quesoA:'Lácteos · queso madurado',
+    animSolo:'Productos de origen animal · segundos', animComb:'Productos de origen animal · carnes y vísceras para combinar', sbComb:'Productos de origen animal · sangrecita y bazo para combinar', animMaz:'Productos de origen animal · mazamorras (vísceras)',
+    huevoMain:'Huevo · segundos (entero)', huevoLig:'Huevo · ligante', yema:'Huevo · papillas (yema)', ovo:'Ovoproducto', legA:'Leguminosas · segundos (guisos, papillas)', tubA:'Raíces y tubérculos · guarnición', tubPure:'Raíces y tubérculos · purés, papillas o guisos', papaSeca:'Raíces y tubérculos · guisos (papa seca)',
+    arroz:'Cereales · arroz como guarnición', arrozPpal:'Cereales · arroz chaufa, jardinera o verde', fideo:'Cereales · fideos como guarnición', fideoPpal:'Cereales · fideos como plato principal', granoA:'Cereales · quinua y trigo (guarnición, papilla)', espA:'Cereales · harina para apanar o ligar',
+    aceite68:'Aceites · papillas o puré', aceiteA:'Aceites · arroz con guisos, purés o leguminosas',
+    harina1:'Mazamorras · harina u hojuela (sin espesante)', harina1e:'Mazamorras · harina u hojuela (con espesante)', harina2:'Mazamorras · con 2 harinas u hojuelas (cada una)', esp:'Mazamorras · harina como espesante', enteroMaz:'Mazamorras o batidos · fruta o tubérculo',
+    frutaF:'Frutas · como complemento', alimInf:'Alimento infantil'};
+  // categoría de un alimento: nombre y grupo de COMP_ALIMENTOS
+  function cat(nom, grupo){
+    const n = sinT(nom), g = sinT(grupo);
+    if (/LECHE EVAPORADA/.test(n)) return 'lacEv';
+    if (/LECHE/.test(n) && /LACTEO/.test(g)) return 'lacUht';
+    if (/QUESO/.test(n)) return 'queso';
+    if (/MANTEQUILLA|^ACEITE/.test(n)) return 'aceite';
+    if (/YEMA/.test(n)) return 'yema';
+    if (/HUEVO/.test(n) && !/MEZCLA|POLVO/.test(n)) return 'huevo';
+    if (/OVOPRODUCTO/.test(g) || /MEZCLA EN POLVO/.test(n)) return 'ovo';
+    if (/SANGRECITA|SANGRE|BAZO/.test(n)) return 'sb';
+    if (/ORIGEN ANIMAL|PESQUERO/.test(g)) return 'anim';
+    if (/ALIMENTO INFANTIL/.test(g)) return 'alimInf';
+    if (/ALMIDON|MAICENA|FECULA|CHUNO/.test(n)) return 'esp';
+    if (/HARINA|HOJUELA/.test(n)) return 'harina';
+    if (/PAPA SECA/.test(n)) return 'papaSeca';
+    if (/LEGUMINOSA/.test(g)) return 'leg';
+    if (/RAICES Y TUBERCULOS/.test(g) && !/BETARRAGA|BETERRAGA/.test(n)) return 'tub';
+    if (/^ARROZ/.test(n)) return 'arroz';
+    if (/FIDEO/.test(n)) return 'fideo';
+    if (/CEREAL/.test(g)) return 'grano';          // quinua, trigo, sémola, cebada, kiwicha, maíz
+    if (/^FRUTAS$/.test(g.trim()) && !/LIMON/.test(n)) return 'fruta';
+    return null;                                    // verduras, condimentos, sal, azúcar, agua, etc.: no se evalúan
+  }
+  /** Mínimos de cada fila de una receta. k: 'R' refrigerio, 'A' almuerzo, 'F' fruta. rows: [[nombre, grupo, g68, g911, g1223, g2436], ...]
+      Devuelve [{i, cat, tabla, min:[4], suma:[i,...] (si se evalúa la suma de varias filas)}] */
+  function minimos(k, nombreRec, rows){
+    const nr = sinT(nombreRec), C = rows.map(r=>cat(r[0], r[1]));
+    const res = [];
+    const idx = c => C.map((x,i)=>x===c?i:-1).filter(i=>i>=0);
+    const pon = (ids, tabla, suma) => { if (!ids.length) return; if (suma) res.push({ids, tabla, suma:true}); else ids.forEach(i=>res.push({ids:[i], tabla})); };
+    if (k==='F'){ pon(idx('fruta'), 'frutaF', true); return res; }
+    if (k==='R'){
+      pon(idx('lacEv'), 'lacEvR'); pon(idx('lacUht'), 'lacUhtR');
+      const main = C.map((c,i)=>(c==='harina'||c==='grano'||c==='arroz'||(c==='leg'))?i:-1).filter(i=>i>=0), esp = idx('esp');
+      pon(main, main.length>=2 ? 'harina2' : (esp.length ? 'harina1e' : 'harina1'));
+      pon(esp, 'esp');
+      pon(idx('fruta').concat(idx('tub')), 'enteroMaz', true);
+      pon(idx('anim').concat(idx('sb')), 'animMaz');
+      pon(idx('huevo'), 'huevoLig'); pon(idx('yema'), 'huevoLig'); pon(idx('ovo'), 'ovo'); pon(idx('alimInf'), 'alimInf');
+      return res;
+    }
+    // almuerzo
+    pon(idx('lacEv'), 'lacEvA'); pon(idx('lacUht'), 'lacUhtA'); pon(idx('queso'), 'quesoA');
+    const an = idx('anim'), sb = idx('sb'), comb = an.length + sb.length >= 2;
+    pon(an, comb ? 'animComb' : 'animSolo'); pon(sb, comb ? 'sbComb' : 'animSolo');
+    pon(idx('huevo'), (an.length+sb.length) ? 'huevoLig' : 'huevoMain'); pon(idx('yema'), 'yema'); pon(idx('ovo'), 'ovo');
+    pon(idx('leg'), 'legA', true); pon(idx('tub'), /PURE|PAPILLA/.test(nr) ? 'tubPure' : 'tubA', true); pon(idx('papaSeca'), 'papaSeca');
+    pon(idx('arroz'), /CHAUFA|JARDINERA|ARROZ VERDE/.test(nr) ? 'arrozPpal' : 'arroz', true);
+    pon(idx('fideo'), /PLATO PRINCIPAL/.test(nr) ? 'fideoPpal' : 'fideo', true);
+    pon(idx('grano'), 'granoA', true); pon(idx('harina').concat(idx('esp')), 'espA');
+    pon(idx('aceite'), 'aceiteA', true);   // 6-8: se usa aceite68 (abajo)
+    pon(idx('alimInf'), 'alimInf');
+    return res;
+  }
+  const tablaG = (tabla, g) => (tabla==='aceiteA' && g===0) ? T.aceite68[0] : T[tabla][g];
+  /** Revisa una receta para los grupos que la reciben (gs: índices 0..3). Devuelve observaciones. */
+  function revisar(k, nombreRec, rows, gs){
+    const obs = [];
+    minimos(k, nombreRec, rows).forEach(m=>{
+      gs.forEach(g=>{
+        const min = tablaG(m.tabla, g); if (!min) return;
+        const v = m.ids.reduce((t,i)=>t+(+rows[i][2+g]||0),0);
+        if (v>0 && v < min - 1e-9) obs.push({t:'bajo', ids:m.ids, g, v, min, tabla:m.tabla});
+      });
+      // misma dosificación para todos los grupos que la reciben, cuando el Anexo N° 2 la diferencia
+      const gv = gs.filter(g=>tablaG(m.tabla,g)>0);      // solo los grupos para los que el Anexo N° 2 fija una dosificación
+      if (!m.suma && gv.length>=2){
+        const mins = gv.map(g=>tablaG(m.tabla,g));
+        if (new Set(mins).size>1) m.ids.forEach(i=>{ const vs = gv.map(g=>+rows[i][2+g]||0); if (vs.every(x=>x>0 && x===vs[0])) obs.push({t:'igual', ids:[i], gs:gv, v:vs[0], mins, tabla:m.tabla}); });
+      }
+    });
+    return obs;
+  }
+  const LET = {0:'R',1:'A',2:'A',3:'R',4:'F'}, GS = {0:[0,1,2,3],1:[0],2:[1,2,3],3:[0,1,2,3],4:[0,1,2,3]};
+  /** Observaciones de un día. recs: {clave: [nombre, filas [ing, g68, g911, g1223, g2436, gAC]]}, ing: [[nombre, …, grupo (9)]],
+      dia: {k: cod}, u: usuarios por grupo. Devuelve [[k, clave, alimentos, 'b'|'i', g | [gs], valor, mín | [mins], tabla]]. */
+  function revisarDia(recs, ing, dia, u){
+    const out = [];
+    [0,1,2,3,4].forEach(k=>{
+      if (dia[k]==null) return; const key = LET[k]+dia[k], rec = recs[key]; if (!rec) return;
+      const gs = GS[k].filter(g=>u[g]>0); if (!gs.length) return;
+      const rows = rec[1].map(r=>[(ing[r[0]]||[])[0], (ing[r[0]]||[])[9], r[1], r[2], r[3], r[4]]);
+      revisar(LET[k], rec[0], rows, gs).forEach(o=>out.push([k, key, o.ids.map(i=>rows[i][0]).join(' + '), o.t==='bajo'?'b':'i', o.t==='bajo'?o.g:o.gs, o.v, o.t==='bajo'?o.min:o.mins, o.tabla]));
+    });
+    return out;
+  }
+  return { T, NOMT, cat, minimos, revisar, revisarDia, LET, GS };
+})();
+
+const MOT_DZ = 'No cumple dosificaciones (Anexo N° 2)';
+const dzCache = {};
+function celdasDe(cui){ const c = {}; (D.menuW[cui]||[]).forEach(([f,sm,k,cod])=>{ (c[f]=c[f]||{})[k]=cod; }); return c; }
+// {fecha: [[k, clave, alimentos, 'b' (bajo el mínimo) | 'i' (igual en todos los grupos), grupo | [grupos], gramos, mínimo | [mínimos], tabla]]}
+function dzDe(s){
+  if (dzCache[s.cui]) return dzCache[s.cui];
+  if (s.dz) return dzCache[s.cui] = s.dz;                       // calculado al publicar, con las mismas reglas
+  if (!D.recs[s.cui] || !D.menuW[s.cui]) return {};
+  const cel = celdasDe(s.cui), out = {};
+  evaluarAporte(s).malos.forEach(m=>{ const o = Dosif.revisarDia(D.recs[s.cui], D.ing, cel[m.f]||{}, s.u); if (o.length) out[m.f] = o; });
+  return dzCache[s.cui] = out;
+}
+const diasDz = s => { const z = dzDe(s); return evaluarAporte(s).malos.filter(m=>z[m.f]); };
+const chipDz = (s, dd) => lnkDias(s, dd, MOT_DZ, '<span class="chip mag">No cumple dosificaciones'+(dd.length>1?' · '+dd.length+' días':'')+'</span>', 'chipl');
+const gramos = v => nf1.format(v).replace(/,0$/,'').replace(/\.0$/,'')+' g';
+const filas6 = rows => rows.map(r=>[(D.ing[r[0]]||[])[0], (D.ing[r[0]]||[])[9], r[1], r[2], r[3], r[4]]);
+const gsDe = (s,k) => Dosif.GS[k].filter(g=>s.u[g]>0);
+// costo del día (usuarios de cada grupo y AC en el almuerzo) y nutrientes bajo la meta, para un juego de recetas {k: filas}
+function evalDiaDz(s, R){
+  const P = D.precioIng[s.cui]||{};
+  const ap = (rows, gi) => { const t=[0,0,0,0,0,0]; rows.forEach(row=>{ const g=row[1+gi]||0, m=D.ing[row[0]]; for(let j=0;j<5;j++) t[j]+=m[1+j]/100*g*m[6]; t[5]+=(P[row[0]]||0)/1000*g; }); return t; };
+  let cost = 0; const malos = [];
+  [0,1,2,3].forEach(gi=>{ if(!s.u[gi]) return; const t=[0,0,0,0,0,0];
+    [0, gi===0?1:2, 4, 3].forEach(k=>{ if(R[k]) ap(R[k],gi).forEach((v,j)=>t[j]+=v); });
+    cost += t[5]*s.u[gi];
+    for(let j=0;j<5;j++){ const p = pctNut(t,j,gi); if(evalua(j,gi) && p && !cumple(p,j)) malos.push([j,gi]); } });
+  if (R[2] && s.acs) cost += ap(R[2],4)[5]*s.acs;
+  return {cost, malos};
+}
+// sube al mínimo del anexo los alimentos que están por debajo (si son varios que se suman, en la misma proporción)
+function alMinimo(s, k, rec){
+  const rows = rec[1].map(r=>r.slice()); let n = 0;
+  Dosif.revisar(LET[k], rec[0], filas6(rec[1]), gsDe(s,k)).forEach(o=>{ if(o.t!=='bajo') return; const f = o.min/o.v;
+    o.ids.forEach(i=>{ rows[i][1+o.g] = Math.ceil(rec[1][i][1+o.g]*f*10-1e-6)/10; }); n++; });
+  return n ? rows : null;
+}
+const malosTxt = M => { const p = {}; M.forEach(([j,g])=>(p[j]=p[j]||[]).push(g)); return Object.keys(p).map(j=>NUTL[j]+' ('+p[j].map(g=>GRC[g]).join(', ')+')').join(', '); };
+// sugerencias para un día bajo la meta: ajustar al mínimo y cambiar una preparación por otra del recetario del servicio
+function sugerenciasDz(s, f, obs){
+  const recs = D.recs[s.cui]||{}, cel = celdasDe(s.cui)[f]||{}, base = {}, corr = {}, ajustados = new Set();
+  [0,1,2,3,4].forEach(k=>{ if(cel[k]==null) return; const rec = recs[LET[k]+cel[k]]; if(!rec) return; base[k] = rec[1];
+    const c = gsDe(s,k).length ? alMinimo(s, k, rec) : null; corr[k] = c || rec[1]; if (c) ajustados.add(k); });
+  // ¿alguna receta del día diferencia la dosificación entre al menos 2 grupos de edad?
+  const difer = Object.keys(base).some(k=>{ const gs = gsDe(s,+k); return gs.length>=2 && base[k].some(r=>new Set(gs.map(g=>r[1+g]||0)).size>1); });
+  const c0 = evalDiaDz(s, base), saldo = s.presT - s.costT, tope = Math.max(0, saldo);
+  const out = {difer, saldo, ajustados};
+  if (!difer) return out;
+  if (ajustados.size){ const c1 = evalDiaDz(s, corr); out.ajuste = {dc: c1.cost-c0.cost, malos: c1.malos}; }
+  const W = D.menuW[s.cui]||[], sem = (W.find(r=>r[0]===f)||[])[1], usadas = {};
+  W.forEach(([ff,sm,k,cod])=>{ if(sm===sem && cod!=null) (usadas[k]=usadas[k]||new Set()).add(LET[k]+cod); });
+  const conObs = new Set(obs.map(o=>o[0])), P = D.precioIng[s.cui]||{}, cands = [];
+  Object.keys(base).forEach(k0=>{ const k = +k0, gs = gsDe(s,k); if(!gs.length) return;
+    Object.keys(recs).forEach(key=>{
+      if (key[0]!==LET[k] || (usadas[k] && usadas[k].has(key))) return;          // otra receta, no programada ya esa semana en el mismo tiempo
+      const rec = recs[key], rows = rec[1];
+      if (!gs.every(g=>rows.some(r=>r[1+g]>0))) return;                        // con dosificación para los grupos que la reciben
+      if (rows.some(r=>gs.some(g=>r[1+g]>0) && !P[r[0]] && !/^AGUA/.test((D.ing[r[0]]||[''])[0]))) return;   // todos sus alimentos cotizados
+      const ob = Dosif.revisar(LET[k], rec[0], filas6(rows), gs);
+      if (ob.some(o=>o.t!=='bajo')) return;                                     // que diferencie la dosificación como el Anexo N° 2
+      const rowsC = ob.length ? alMinimo(s, k, rec) : rows;                      // y, si algo está bajo el mínimo, ajustada al mínimo
+      const c = evalDiaDz(s, Object.assign({}, corr, {[k]: rowsC}));
+      if (c.malos.length) return;
+      const dc = c.cost - c0.cost; if (dc > tope + 1e-9) return;               // dentro del presupuesto calculado del servicio
+      cands.push({k, key, nom: rec[0], dc, obs: conObs.has(k)?1:0, aj: ob.length>0});
+    }); });
+  cands.sort((a,b)=> b.obs-a.obs || a.dc-b.dc);
+  const sel = [], vistos = new Set();
+  cands.forEach(c=>{ if(sel.length<3 && !vistos.has(c.k)){ sel.push(c); vistos.add(c.k); } });
+  cands.forEach(c=>{ if(sel.length<3 && !sel.includes(c)) sel.push(c); });
+  out.cambios = sel;
+  return out;
+}
+const dS = v => (v>=0.005?'+':v<=-0.005?'−':'')+S2(Math.abs(v));
+function panelDz(s, fechasV){
+  const z = dzDe(s), malos = evaluarAporte(s).malos, recs = D.recs[s.cui]||{}, cel = celdasDe(s.cui);
+  const dias = fechasV.filter(f=>z[f]); if (!dias.length) return '';
+  const tiempo = k => ({0:'Media mañana',1:'Almuerzo (6 a 8 meses)',2:'Almuerzo (9 a 36 meses)',3:'Media tarde',4:'Fruta'})[k];
+  const nomRec = (k,key) => { const r = recs[key]; return r ? r[0] : key; };
+  const uso = s.presT ? nf0.format(s.costT/s.presT*100)+' %' : '—';
+  let h = '<div class="dzbox" role="region" aria-label="Dosificación de las recetas"><h3>No cumple dosificaciones</h3>'+
+    '<p class="note" style="margin:0 0 4px">Días de esta semana que no alcanzan la meta del Programa y tienen recetas con dosificaciones que no corresponden al Anexo N° 2 (tabla de dosificación de alimentos para la preparación de raciones) del procedimiento de atención alimentaria. Se revisan lácteos, carnes, vísceras, pescado, huevo, leguminosas, tubérculos, cereales y harinas, aceites, frutas y alimento infantil.</p>';
+  dias.forEach(f=>{
+    const m = malos.find(x=>x.f===f), obs = z[f], dd = DIAS[(pd(f).getDay()+6)%7];
+    h += '<div class="dzdia" id="dz-'+f+'"><h4>'+dd.charAt(0)+dd.slice(1).toLowerCase()+' '+ddmm(pd(f))+' · no alcanza la meta en '+(m?m.nut.map(j=>NUTL[j].toLowerCase()).join(', ')+' ('+m.gr.map(g=>GRC[g]).join(', ')+')':'algún nutriente')+'</h4>';
+    const porR = {}; obs.forEach(o=>{ const k = o[0]+'|'+o[1]; (porR[k]=porR[k]||[]).push(o); });
+    h += '<ul>'+Object.keys(porR).map(kk=>{ const L = porR[kk], k = L[0][0], key = L[0][1];
+      const por = {}; L.forEach(o=>{ const q = o[3]+'|'+o[2]+'|'+o[7]; (por[q]=por[q]||[]).push(o); });
+      return '<li><b>'+tiempo(k)+'</b> · '+esc(nomRec(k,key))+' <span class="tb">(código '+esc(key.slice(1))+')</span><ul>'+Object.values(por).map(G=>{ const o = G[0];
+        if (o[3]==='b') return '<li>'+esc(o[2])+': '+G.map(x=>gramos(x[5])+' en '+GRC[x[4]]+' (mínimo '+gramos(x[6])+')').join(', ')+' <span class="tb">· '+esc(Dosif.NOMT[o[7]])+'</span></li>';
+        return '<li>'+esc(o[2])+': '+gramos(o[5])+' en todos los grupos ('+o[4].map(g=>GRC[g]).join(', ')+'); el Anexo N° 2 la diferencia: mínimo '+o[6].map(gramos).join(' · ')+' <span class="tb">· '+esc(Dosif.NOMT[o[7]])+'</span></li>'; }).join('')+'</ul></li>'; }).join('')+'</ul>';
+    const sg = sugerenciasDz(s, f, obs);
+    if (!sg.difer){ h += '<p class="note">No se proponen cambios: las recetas de este día usan la misma dosificación para todos los grupos de edad.</p></div>'; return; }
+    h += '<div class="dzsug"><b class="t">Sugerencias</b> <span class="tb">para que el día alcance la meta sin pasar del presupuesto calculado del servicio (uso '+uso+(sg.saldo>=0?', saldo '+S2(sg.saldo):', '+S2(-sg.saldo)+' por encima; solo se proponen cambios que bajan el costo')+')</span><ul>';
+    if (sg.ajuste){ const a = sg.ajuste, ok = !a.malos.length;
+      h += '<li><b>Ajustar al mínimo del Anexo N° 2</b> los alimentos señalados por debajo del mínimo: '+(ok ? 'con eso el día alcanza la meta' : 'con eso el día aún no alcanza la meta en '+malosTxt(a.malos).toLowerCase())+'; costo del día (todas las raciones) '+dS(a.dc)+(ok && a.dc > Math.max(0,sg.saldo)+1e-9 ? ', más que el saldo del presupuesto' : '')+'.</li>'; }
+    if (sg.cambios.length) sg.cambios.forEach(c=>{
+      h += '<li><b>Cambiar '+tiempo(c.k).toLowerCase()+'</b> «'+esc(nomRec(c.k, LET[c.k]+cel[f][c.k]))+'» por «'+esc(c.nom)+'» <span class="tb">(código '+esc(c.key.slice(1))+' del recetario del servicio)</span>'+(()=>{ const ot = [...sg.ajustados].some(k=>k!==c.k);
+          return c.aj&&ot ? ', ajustando al mínimo del Anexo N° 2 sus dosificaciones y las de las demás preparaciones' : c.aj ? ', ajustando sus dosificaciones al mínimo del Anexo N° 2' : ot ? ', con las demás preparaciones ajustadas al mínimo del Anexo N° 2' : ''; })()+
+        ': el día alcanza la meta en todos los nutrientes y grupos de edad; costo del día (todas las raciones) '+dS(c.dc)+'.</li>'; });
+    else h += '<li>No se encontró en el recetario del servicio una preparación que, cambiando una sola del día, alcance la meta dentro del presupuesto.</li>';
+    h += '</ul><p class="tb" style="margin:2px 0 0">Las preparaciones propuestas diferencian la dosificación por grupo de edad como el Anexo N° 2, tienen todos sus alimentos cotizados y no están programadas en esa semana en el mismo tiempo de comida.'+(obs.some(o=>o[3]==='i')?' Aunque el día alcance la meta, las recetas con la misma cantidad en todos los grupos de edad deben diferenciarse según el Anexo N° 2.':'')+'</p></div></div>';
+  });
+  return h + '</div>';
 }
 // -------- lista de servicios y fechas detrás de un conteo de días (se abre en la ventana; cada servicio lleva a su menú)
 let LISTAS = {}, nLista = 0;
@@ -979,6 +1210,7 @@ function alertasAporte(){
   $('#apLede').innerHTML = con.length
     ? con.length+' de '+L.length+' servicios alimentarios tienen al menos un día en que el menú no alcanza la meta del Programa para algún nutriente y grupo de edad (energía 70 %, proteínas 90 %, hierro 100 %, zinc 70 % y calcio 40 % del requerimiento). El cálculo es el mismo del bloque de aporte de la pestaña Menú semanal; solo se evalúan los grupos que tienen usuarios, y en los de 6 a 8 y 9 a 11 meses el calcio es referencial y no se cuenta como incumplimiento.'
     : 'Se evalúa si cada día con menú alcanza la meta del Programa (energía 70 %, proteínas 90 %, hierro 100 %, zinc 70 % y calcio 40 % del requerimiento) en los grupos de edad con usuarios; en los de 6 a 8 y 9 a 11 meses el calcio es referencial.';
+  if (con.length) $('#apLede').innerHTML += ' <b>No cumple dosificaciones</b>: días bajo la meta en que alguna receta tiene un alimento por debajo de la dosificación mínima del Anexo N° 2 del procedimiento de atención alimentaria, o usa la misma cantidad para todos los grupos de edad cuando el anexo la diferencia. En el menú semanal se detallan y se sugieren cambios para alcanzar la meta dentro del presupuesto calculado del servicio.';
   if(!con.length){ $('#tAp').innerHTML=''; okTabla('tAp', L.length ? 'En '+(UT==='TODAS'?'los servicios alimentarios seleccionados':'los servicios alimentarios de '+esc(UT))+', todos los días con menú alcanzan la meta del Programa en los cinco nutrientes y en todos los grupos de edad con usuarios.' : 'No hay servicios alimentarios en esta selección.'); return; }
   okTabla('tAp', null);
   if (UT==='TODAS'){
@@ -987,14 +1219,15 @@ function alertasAporte(){
     $('#tAp').innerHTML = tablaUT(L, (u,ss)=>{ const rr=ss.map(s=>porS.get(s.cui)), al=rr.filter(r=>r.malos.length);
         if(!al.length) return null;   // solo las UT/OCT con algún servicio con días bajo la meta
         const dm=sum(al.map(r=>r.malos.length)), nut=[0,1,2,3,4].map(j=>sum(al.map(r=>r.porNut[j]))), gr=[0,1,2,3].filter(g=>al.some(r=>r.grupos[g]));
-        return {u, k:al.length, h:'<tr><td>'+utLink(u)+'</td><td class="n">'+ss.length+'</td><td class="n">'+(al.length?'<b>'+al.length+'</b>':'—')+'</td><td class="n">'+(dm||'—')+'</td><td>'+
+        const nz=sum(ss.map(s=>diasDz(s).length)), sz=ss.filter(s=>diasDz(s).length).length;
+        return {u, k:al.length, h:'<tr><td>'+utLink(u)+'</td><td class="n">'+ss.length+'</td><td class="n">'+(al.length?'<b>'+al.length+'</b>':'—')+'</td><td class="n">'+(dm||'—')+'</td><td class="n">'+(nz?'<span class="chip mag">'+nz+' día'+(nz===1?'':'s')+' · '+sz+' servicio'+(sz===1?'':'s')+'</span>':'—')+'</td><td>'+
           (nut.map((n,j)=>n?'<span class="chip" style="margin:1px 2px">'+NUTL[j]+' '+n+'</span>':'').join('')||'—')+'</td><td style="white-space:nowrap">'+(gr.map(g=>GRC[g]).join(', ')||'—')+'</td></tr>'}; },
-      '<th>UT/OCT</th><th class="n">Servicios con menú</th><th class="n">Servicios con días bajo la meta</th><th class="n">Días bajo la meta</th><th>Nutrientes (n.° de días)</th><th>Grupos de edad</th>');
+      '<th>UT/OCT</th><th class="n">Servicios con menú</th><th class="n">Servicios con días bajo la meta</th><th class="n">Días bajo la meta</th><th class="n">No cumple dosificaciones</th><th>Nutrientes (n.° de días)</th><th>Grupos de edad</th>');
     return;
   }
-  $('#tAp').innerHTML = '<thead><tr><th>Servicio alimentario</th><th class="n">Días con menú</th><th class="n">Días bajo la meta</th><th>Nutrientes (n.° de días)</th><th>Grupos de edad</th><th>Primer día</th></tr></thead><tbody>'+
-    con.map(({s,r})=>{ const m=r.malos[0];
-      return '<tr><td>'+saA(s)+'</td><td class="n">'+r.dias+'</td><td class="n">'+lnkDias(s,r.malos,'Días bajo la meta del Programa',r.malos.length,'cnt')+'</td><td>'+
+  $('#tAp').innerHTML = '<thead><tr><th>Servicio alimentario</th><th class="n">Días con menú</th><th class="n">Días bajo la meta</th><th>Dosificación</th><th>Nutrientes (n.° de días)</th><th>Grupos de edad</th><th>Primer día</th></tr></thead><tbody>'+
+    con.map(({s,r})=>{ const m=r.malos[0], dd=diasDz(s);
+      return '<tr><td>'+saA(s)+'</td><td class="n">'+r.dias+'</td><td class="n">'+lnkDias(s,r.malos,'Días bajo la meta del Programa',r.malos.length,'cnt')+'</td><td>'+(dd.length?chipDz(s,dd):'—')+'</td><td>'+
         r.porNut.map((n,j)=>n?lnkDias(s,r.malos.filter(m=>m.nut.includes(j)),NUTL[j]+' bajo la meta del Programa','<span class="chip" style="margin:1px 2px">'+NUTL[j]+' '+n+'</span>','chipl'):'').join('')+'</td><td>'+
         r.grupos.map((n,g)=>n?GRC[g]:'').filter(Boolean).join(', ')+'</td><td>'+lnkDias(s,r.malos,'Días bajo la meta del Programa',ddmm(pd(m.f))+' · ver menú')+'</td></tr>'; }).join('')+'</tbody>';
 }

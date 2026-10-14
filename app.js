@@ -39,16 +39,51 @@ D.sa.forEach(s => {
 const saA = s => '<a href="#detalle" class="salink" data-go="'+s.cui+'">'+esc(s.sa)+'</a>';
 const byCui = Object.fromEntries(D.sa.map(s=>[s.cui,s]));
 
-// filtro
-let UT = 'TODAS';
-try { let k = localStorage.getItem('envios_ut'); if (k==='LIMA PROVINCIA') k='LIMA PROVINCIAS'; if (k) UT = k; } catch(e) {}
+// filtros: UT/OCT, comité de gestión (CG) y servicio alimentario (SAF), en cascada: elegir un comité o un servicio fija su UT/OCT
+let UT = 'TODAS', CG = '', SAF = '';
+try { let k = localStorage.getItem('envios_ut'); if (k==='LIMA PROVINCIA') k='LIMA PROVINCIAS'; if (k) UT = k; CG = localStorage.getItem('envios_cg')||''; SAF = localStorage.getItem('envios_saf')||''; } catch(e) {}
 const uts = [...new Set(D.sa.map(s=>s.ut))].sort();
 if (UT!=='TODAS' && !uts.includes(UT)) UT='TODAS';
 $('#fUT').innerHTML = '<option value="TODAS">Todas las UT (' + D.sa.length + ')</option>' +
   uts.map(u => '<option value="'+esc(u)+'">'+esc(u)+' ('+D.sa.filter(s=>s.ut===u).length+')</option>').join('');
 $('#fUT').value = UT;
-$('#fUT').addEventListener('change', e => { UT = e.target.value; try{localStorage.setItem('envios_ut',UT)}catch(_){} openCui=null; render(); });
-const sel = () => UT==='TODAS' ? D.sa : D.sa.filter(s=>s.ut===UT);
+const nCG = s => String(s||'').replace(/\s+/g,' ').trim();
+const PADF = () => D.pad || window.__PAD || [];   // padrón del periodo: [UT, CUI, servicio, comité, distrito]
+// comités de la UT/OCT (o de todas): los de los servicios con envío vigente y los del padrón del periodo
+function comites(){
+  const m = {};
+  D.sa.forEach(s=>{ const c=nCG(s.cg), k=s.ut+'||'+c; (m[k]||(m[k]={ut:s.ut, cg:c, n:0})).n++; });
+  PADF().forEach(p=>{ const c=nCG(p[3]), k=p[0]+'||'+c; if(!m[k]) m[k]={ut:p[0], cg:c, n:0}; });
+  return Object.values(m).filter(o=>o.cg && uts.includes(o.ut) && (UT==='TODAS' || o.ut===UT));
+}
+function llenarFiltros(){
+  const L = comites().sort((a,b)=>a.cg.localeCompare(b.cg,'es') || a.ut.localeCompare(b.ut,'es'));
+  if (CG && (UT==='TODAS' || !L.some(o=>o.cg===CG))) CG = '';
+  $('#fCG').innerHTML = '<option value="">Todos los comités ('+L.length+')</option>'+L.map(o=>'<option value="'+esc(o.ut+'||'+o.cg)+'">'+esc(o.cg)+(UT==='TODAS'?' · '+esc(o.ut):'')+' ('+o.n+')</option>').join('');
+  $('#fCG').value = CG ? UT+'||'+CG : '';
+  const S = D.sa.filter(s=>(UT==='TODAS' || s.ut===UT) && (!CG || nCG(s.cg)===CG)).sort((a,b)=>a.sa.localeCompare(b.sa,'es'));
+  if (SAF && !S.some(s=>s.cui===SAF)) SAF = '';
+  $('#fSAF').innerHTML = '<option value="">Todos los servicios ('+S.length+')</option>'+S.map(s=>'<option value="'+s.cui+'">'+esc(s.sa)+(CG?'':' · CG '+esc(s.cg))+(UT==='TODAS'?' · '+esc(s.ut):'')+'</option>').join('');
+  $('#fSAF').value = SAF;
+  try{ localStorage.setItem('envios_ut',UT); localStorage.setItem('envios_cg',CG); localStorage.setItem('envios_saf',SAF); }catch(_){}
+}
+llenarFiltros();
+// fija los tres filtros y vuelve a dibujar; con un solo servicio, su ficha queda abierta en el detalle
+function fijarFiltro(ut, cg, saf){ UT = ut; CG = cg||''; SAF = saf||''; $('#fUT').value = UT; llenarFiltros(); openCui = SAF || null; render(); }
+$('#fUT').addEventListener('change', e => fijarFiltro(e.target.value, '', ''));
+$('#fCG').addEventListener('change', e => { const v = e.target.value; if (!v) return fijarFiltro(UT, '', ''); const i = v.indexOf('||'); fijarFiltro(v.slice(0,i), v.slice(i+2), ''); });
+$('#fSAF').addEventListener('change', e => { const s = byCui[e.target.value]; if (!s) return fijarFiltro(UT, CG, ''); fijarFiltro(s.ut, CG, s.cui); });
+const sel = () => D.sa.filter(s=>(UT==='TODAS' || s.ut===UT) && (!CG || nCG(s.cg)===CG) && (!SAF || s.cui===SAF));
+// nombre de la selección para los títulos y textos
+const filtroTxt = () => SAF ? (byCui[SAF]||{}).sa : CG ? 'el comité de gestión '+CG : UT;
+const deSel = () => SAF ? 'de '+(byCui[SAF]||{}).sa : CG ? 'del comité de gestión '+CG : 'de '+UT;
+// envíos (D.envs) de la selección; r[2] es el CUI del padrón
+function envFiltro(){
+  if (!CG && !SAF) return r => UT==='TODAS' || r[4]===UT;
+  const set = new Set(sel().map(s=>s.cui));
+  if (!SAF) PADF().forEach(p=>{ if (p[0]===UT && nCG(p[3])===CG) set.add(String(p[1])); });
+  return r => r[4]===UT && set.has(String(r[2]));
+}
 
 // tooltip
 const tip = $('#tip');
@@ -73,7 +108,7 @@ function hbars(el, rows, opt){
   el.classList.add('hb');
   el.innerHTML = rows.map(r => {
     const w = Math.max(0, Math.min(100, r.value/max*100));
-    const nm = r.go ? '<a href="#detalle" class="salink" data-go="'+r.go+'">'+esc(r.name)+'</a>' : r.goUT ? '<a href="#" class="salink" data-ut="'+esc(r.goUT)+'">'+esc(r.name)+'</a>' : esc(r.name);
+    const nm = r.go ? '<a href="#" class="salink" data-saf="'+r.go+'" title="Ver solo este servicio alimentario">'+esc(r.name)+'</a>' : r.goUT ? '<a href="#" class="salink" data-ut="'+esc(r.goUT)+'">'+esc(r.name)+'</a>' : esc(r.name);
     return '<div class="hbar" data-tip="'+esc(r.tip||'')+'"><div class="nm" title="'+esc(r.name)+'">'+nm+'</div>'+
       '<div class="track">'+(opt.ref!=null?'<i class="ref" style="left:'+(opt.ref/max*100)+'%"'+(opt.refTip?' title="'+esc(opt.refTip)+'"':'')+'></i>':'')+
       '<div class="fill" style="width:'+w+'%;background:'+(r.color||'var(--azul)')+'"></div></div>'+
@@ -107,7 +142,8 @@ function kpis(){
   // los CUI que no están en el padrón también cuentan: se suman a los que enviaron y a los esperados
   const enPad = new Set(L.map(s=>s.cuiPad||s.cui));   // CUI del padrón (corregido si el envío trae otro) o el del envío si no está en el padrón
   const nFuera = L.filter(s=>!s.padron).length;
-  const padTot = (UT==='TODAS' ? D.padTotal : (D.padUT[UT]||0)) + nFuera;
+  const sPad = SAF ? (byCui[SAF].cuiPad||SAF) : null;
+  const padTot = (UT==='TODAS' ? D.padTotal : (CG||SAF) ? PADF().filter(p=>p[0]===UT && (!CG || nCG(p[3])===CG) && (!SAF || String(p[1])===String(sPad))).length : (D.padUT[UT]||0)) + nFuera;
   const utsCon = new Set(D.sa.map(s=>s.ut)).size, utsTot = new Set(Object.keys(D.padUT).concat(D.sa.map(s=>s.ut))).size;
   const nin = sum(L.map(s=>s.ninos)), ac = sum(L.map(s=>s.acs));
   const pres = sum(L.map(s=>s.presT)), cost = sum(L.map(s=>s.costT));
@@ -186,14 +222,14 @@ function avance(){
 function faltan(env){
   const box = $('#faltan'); if (!box) return;
   const PADL = D.pad || window.__PAD;   // padrón del periodo; si no hay, el general
-  if (UT==='TODAS' || !PADL){ box.hidden = true; return; }
+  if (UT==='TODAS' || SAF || !PADL){ box.hidden = true; return; }
   const ya = env[UT] || new Set();
-  const pad = PADL.filter(p=>p[0]===UT);
+  const pad = PADL.filter(p=>p[0]===UT && (!CG || nCG(p[3])===CG));
   const fl = pad.filter(p=>!ya.has(p[1])).sort((a,b)=>a[3].localeCompare(b[3],'es') || a[2].localeCompare(b[2],'es'));
   box.hidden = false;
   const mes = mesTxt(D.periodo).replace(/ \d{4}$/,'');
   if (!fl.length){
-    $('#faltNote').textContent = 'Los '+pad.length+' servicios alimentarios del padrón de esta unidad territorial ya tienen un envío vigente para '+mes+'.';
+    $('#faltNote').textContent = 'Los '+pad.length+' servicios alimentarios del padrón de '+(CG?'este comité de gestión':'esta unidad territorial')+' ya tienen un envío vigente para '+mes+'.';
     $('#tFalt').innerHTML = ''; return;
   }
   $('#faltNote').textContent = fl.length+' de '+pad.length+' servicios alimentarios del padrón todavía no tienen un envío vigente para '+mes+'. Ordenados por comité de gestión.';
@@ -202,7 +238,7 @@ function faltan(env){
 }
 // D.envs: todos los envíos del mes, del más reciente al más antiguo:
 // [recepción 'AAAA-MM-DD HH:MM', envío 'AAAA-MM-DD HH:MM', CUI del padrón, servicio, UT, vigente 1/0]
-const envsSel = () => (D.envs||[]).filter(r=>UT==='TODAS' || r[4]===UT);
+const envsSel = () => (D.envs||[]).filter(envFiltro());
 function porDia(){
   let rows = D.porDia; // [dia, NO, SI]
   if (D.envs){ const m = {}; envsSel().forEach(r=>{ const d=r[1].slice(0,10), o=m[d]||(m[d]=[0,0]); o[r[5]?1:0]++; });
@@ -236,12 +272,12 @@ function ultimos(){
   box.hidden = false;
   const tot = UT==='TODAS', A = D.envs, re = new Array(A.length), visto = {};
   for (let i=A.length-1; i>=0; i--){ re[i] = !!visto[A[i][2]]; visto[A[i][2]] = 1; }   // reenvío: el mismo servicio ya había enviado
-  const L = A.map((r,i)=>({r, re:re[i]})).filter(o=>tot || o.r[4]===UT), top = L.slice(0,10);
+  const ok = envFiltro(), L = A.map((r,i)=>({r, re:re[i]})).filter(o=>ok(o.r)), top = L.slice(0,10);
   const fh = f => f.slice(8,10)+'/'+f.slice(5,7)+' '+f.slice(11,16);
   const mes = mesTxt(D.periodo).replace(/ \d{4}$/,'');
   $('#ultLede').textContent = (L.length>10 ? 'Los 10 envíos más recientes' : L.length===1 ? 'El único envío' : 'Los '+L.length+' envíos')+
-    ' para '+mes+(tot ? ', de todas las UT/OCT' : ' de '+UT)+', del más reciente al más antiguo. Un reenvío reemplaza al envío anterior del mismo servicio alimentario.';
-  if (!top.length){ $('#tUlt').innerHTML = ''; $('#ultLede').textContent = 'Todavía no hay envíos para '+mes+(tot?'':' de '+UT)+'.'; return; }
+    ' para '+mes+(tot ? ', de todas las UT/OCT' : ' '+deSel())+', del más reciente al más antiguo. Un reenvío reemplaza al envío anterior del mismo servicio alimentario.';
+  if (!top.length){ $('#tUlt').innerHTML = ''; $('#ultLede').textContent = 'Todavía no hay envíos para '+mes+(tot?'':' '+deSel())+'.'; return; }
   $('#tUlt').innerHTML = '<thead><tr><th>Recibido</th>'+(tot?'<th>UT/OCT</th>':'')+'<th>Servicio alimentario</th><th class="n">CUI</th><th>Estado</th></tr></thead><tbody>'+
     top.map(({r,re})=>{ const s = r[5] && byCui[r[2]];
       return '<tr><td style="white-space:nowrap">'+fh(r[0])+'</td>'+(tot?'<td>'+utLink(r[4])+'</td>':'')+'<td>'+(s?saA(s):esc(r[3]))+'</td><td class="n">'+esc(r[2])+'</td><td style="white-space:nowrap">'+
@@ -394,7 +430,7 @@ function calidad(){
   // sin observaciones: recuadro verde de confirmación; los conteos en cero no se listan y los reenvíos quedan como dato informativo
   const info = h => /^Envíos reemplazados|^Pocos envíos/.test(h);
   const okBox = msg => '<div class="okbox" style="margin-bottom:10px"><span class="okic" aria-hidden="true">✓</span><span>'+msg+'</span></div>';
-  const quien = UT==='TODAS' ? 'los envíos vigentes seleccionados' : 'los envíos vigentes de '+esc(UT);
+  const quien = UT==='TODAS' ? 'los envíos vigentes seleccionados' : 'los envíos vigentes '+esc(deSel());
   const vis = items.filter(([n,h])=>n || info(h));
   const hayObs = vis.some(([n,h])=>!info(h));
   $('#obs').innerHTML = (hayObs ? '' : okBox('Sin observaciones en '+quien+': los CUI corresponden al padrón, los proveedores y RUC coinciden con los adjudicados y ningún costo supera el presupuesto.')) + obsHTML(vis.filter(([n,h])=>n));
@@ -407,7 +443,7 @@ function calidad(){
 function irDetalle(cui){
   const s = byCui[cui]; if(!s) return;
   if ($('#vRes').hidden) tab('res');
-  if (s.ut!==UT){ UT=s.ut; $('#fUT').value=UT; try{localStorage.setItem('envios_ut',UT)}catch(_){} }   // el detalle solo existe con la UT filtrada
+  if (!sel().includes(s)){ UT=s.ut; CG=''; SAF=''; $('#fUT').value=UT; llenarFiltros(); }   // el detalle solo existe con la UT filtrada
   $('#q').value=''; openCui = cui; render();
   const tr = document.querySelector('#tSA tr[data-cui="'+cui+'"]');
   (tr||$('#detalle')).scrollIntoView({behavior:'smooth', block:'center'});
@@ -416,7 +452,8 @@ on('click', e=>{
   const a = e.target.closest('a.salink'); if(!a) return;
   e.preventDefault(); e.stopPropagation();
   if (a.dataset.go) irDetalle(a.dataset.go);
-  else if (a.dataset.ut){ UT=a.dataset.ut; $('#fUT').value=UT; try{localStorage.setItem('envios_ut',UT)}catch(_){} openCui=null; render(); }
+  else if (a.dataset.saf){ const s = byCui[a.dataset.saf]; if (s) fijarFiltro(s.ut, CG && nCG(s.cg)===CG ? CG : '', s.cui); }
+  else if (a.dataset.ut) fijarFiltro(a.dataset.ut, '', '');
 });
 
 // -------- detalle
@@ -478,7 +515,7 @@ function detalle(){
 $('#tSA').addEventListener('click', e=>{
   const th = e.target.closest('th'); if(th){ const k=th.dataset.k; if(sortK===k) sortD=-sortD; else {sortK=k; sortD=(k==='sa'||k==='ut')?1:-1;} detalle(); return; }
   if (e.target.closest('a')) return;   // enlaces dentro de la fila (p. ej., días bajo la meta) no abren la ficha
-  const tu = e.target.closest('tr[data-ut]'); if(tu){ UT=tu.dataset.ut; $('#fUT').value=UT; try{localStorage.setItem('envios_ut',UT)}catch(_){} openCui=null; $('#q').value=''; render(); $('#detalle').scrollIntoView({behavior:'smooth', block:'start'}); return; }
+  const tu = e.target.closest('tr[data-ut]'); if(tu){ $('#q').value=''; fijarFiltro(tu.dataset.ut, '', ''); $('#detalle').scrollIntoView({behavior:'smooth', block:'start'}); return; }
   const tr = e.target.closest('tr[data-cui]'); if(tr){ openCui = openCui===tr.dataset.cui?null:tr.dataset.cui; detalle(); if(openCui) $('#drawer').scrollIntoView({behavior:'smooth',block:'nearest'}); }
 });
 $('#tSA').addEventListener('keydown', e=>{ if(e.key==='Enter'){ const th=e.target.closest('th'); if(th) th.click(); }});
@@ -1106,7 +1143,7 @@ function graficoMacro(){
     L.forEach(s=> evaluarAporte(s).mac.forEach((M,gi)=> M.vals.forEach(v=> rows[gi].vals.push(v.p[macSel]))));
   } else {
     const m = {};
-    L.forEach(s=>{ const k = tot ? s.ut : s.cui; const o = m[k] || (m[k] = {lab: tot ? s.ut : s.sa, full: tot ? s.ut : s.sa+' (CUI '+s.cui+')', vals:[], ev:true, n:0});
+    L.forEach(s=>{ const k = tot ? s.ut : s.cui; const o = m[k] || (m[k] = {lab: tot ? s.ut : s.sa, full: tot ? s.ut : s.sa+' (CUI '+s.cui+')', vals:[], ev:true, n:0, k});
       let t=false; [2,3].forEach(gi=> evaluarAporte(s).mac[gi].vals.forEach(v=>{ o.vals.push(v.p[macSel]); t=true; })); if(t) o.n++; });
     rows = Object.values(m).filter(o=>o.vals.length).map(o=>Object.assign(o,{md: cuantil([...o.vals].sort((a,b)=>a-b), .5)}))
       .sort((a,b)=> b.md - a.md || a.lab.localeCompare(b.lab,'es'));
@@ -1129,7 +1166,8 @@ function graficoMacro(){
   rows.forEach((row,ri)=>{
     const a = row.vals, yc = TOP + RH*ri + RH/2;
     const lab = porUT ? corta(row.lab, W<520 ? 15 : 27) : row.lab;
-    g += '<text x="0" y="'+(yc-3)+'" style="fill:var(--ink);font-size:12.5px;font-weight:600"><title>'+esc(row.full)+'</title>'+esc(lab)+'</text>'+
+    g += (porUT && !(SAF && !tot) ? '<a href="#" class="salink" '+(tot?'data-ut="'+esc(row.k)+'"':'data-saf="'+row.k+'"')+'><text x="0" y="'+(yc-3)+'" class="lnk" style="fill:var(--azul);font-size:12.5px;font-weight:600;text-decoration:underline;cursor:pointer"><title>'+esc(row.full)+' · '+(tot?'toque para filtrar esta UT/OCT':'toque para ver solo este servicio')+'</title>'+esc(lab)+'</text></a>'
+                                 : '<text x="0" y="'+(yc-3)+'" style="fill:var(--ink);font-size:12.5px;font-weight:600"><title>'+esc(row.full)+'</title>'+esc(lab)+'</text>')+
          '<text x="0" y="'+(yc+12)+'" style="font-size:11px">'+(a.length? nf0.format(a.length)+(porUT?' menús diarios':' días')+(porUT && tot ? ' · '+row.n+' serv.' : '')+(row.ev?'':' · ref.') : 'sin usuarios')+'</text>';
     if (!a.length) return;
     const s = [...a].sort((p,q)=>p-q), q1=cuantil(s,.25), md=cuantil(s,.5), q3=cuantil(s,.75), mn=s[0], mx=s[s.length-1], av=sum(s)/s.length;
@@ -1183,7 +1221,7 @@ function alertasMacro(){
   if(!rows.length){
     $('#tApMac').innerHTML='';
     let nd=0, alto=0; L.forEach(s=>{ const r=evaluarAporte(s); [2,3].forEach(gi=>r.mac[gi].vals.forEach(v=>{ nd++; if(Math.round(v.p[0])>MAC_RANGO[0][1]) alto++; })); });
-    const quien = UT==='TODAS' ? 'los servicios alimentarios seleccionados' : 'los servicios alimentarios de '+esc(UT);
+    const quien = UT==='TODAS' ? 'los servicios alimentarios seleccionados' : SAF ? esc(filtroTxt()) : 'los servicios alimentarios '+esc(deSel());
     okTabla('tApMac', !conG ? 'No hay servicios alimentarios con usuarios de 12 a 36 meses en esta selección.' :
       (alto ? 'En '+quien+', ningún menú diario de 12 a 36 meses tiene menos de '+pMin+' % de sus calorías de proteínas.' :
               'En '+quien+', todos los menús diarios de 12 a 36 meses están dentro del rango de referencia de proteínas ('+MAC_RANGO[0][0]+' a '+MAC_RANGO[0][1]+' % de las calorías).'));
@@ -1211,7 +1249,7 @@ function alertasAporte(){
     ? con.length+' de '+L.length+' servicios alimentarios tienen al menos un día en que el menú no alcanza la meta del Programa para algún nutriente y grupo de edad (energía 70 %, proteínas 90 %, hierro 100 %, zinc 70 % y calcio 40 % del requerimiento). El cálculo es el mismo del bloque de aporte de la pestaña Menú semanal; solo se evalúan los grupos que tienen usuarios, y en los de 6 a 8 y 9 a 11 meses el calcio es referencial y no se cuenta como incumplimiento.'
     : 'Se evalúa si cada día con menú alcanza la meta del Programa (energía 70 %, proteínas 90 %, hierro 100 %, zinc 70 % y calcio 40 % del requerimiento) en los grupos de edad con usuarios; en los de 6 a 8 y 9 a 11 meses el calcio es referencial.';
   if (con.length) $('#apLede').innerHTML += ' <b>No cumple dosificaciones</b>: días bajo la meta en que alguna receta tiene un alimento por debajo de la dosificación mínima del Anexo N° 2 del procedimiento de atención alimentaria, o usa la misma cantidad para todos los grupos de edad cuando el anexo la diferencia. En el menú semanal se detallan y se sugieren cambios para alcanzar la meta dentro del presupuesto calculado del servicio.';
-  if(!con.length){ $('#tAp').innerHTML=''; okTabla('tAp', L.length ? 'En '+(UT==='TODAS'?'los servicios alimentarios seleccionados':'los servicios alimentarios de '+esc(UT))+', todos los días con menú alcanzan la meta del Programa en los cinco nutrientes y en todos los grupos de edad con usuarios.' : 'No hay servicios alimentarios en esta selección.'); return; }
+  if(!con.length){ $('#tAp').innerHTML=''; okTabla('tAp', L.length ? 'En '+(UT==='TODAS'?'los servicios alimentarios seleccionados':SAF?esc(filtroTxt()):'los servicios alimentarios '+esc(deSel()))+', todos los días con menú alcanzan la meta del Programa en los cinco nutrientes y en todos los grupos de edad con usuarios.' : 'No hay servicios alimentarios en esta selección.'); return; }
   okTabla('tAp', null);
   if (UT==='TODAS'){
     $('#apLede').innerHTML += ' Toque una UT/OCT para ver sus servicios alimentarios.';
@@ -1256,7 +1294,7 @@ function tab(which){
 }
 $('#tbRes').onclick = ()=>tab('res'); $('#tbMen').onclick = ()=>tab('menu'); $('#tbEnv').onclick = ()=>tab('env');
 // abrir el menú de un servicio desde el detalle
-window.__verMenu = (cui, sem, op) => { FOCO = op ? Object.assign({cui}, op) : null; SA = cui; const s0=byCui[cui]; if(s0 && UT!=='TODAS' && s0.ut!==UT){ UT='TODAS'; $('#fUT').value=UT; try{localStorage.setItem('envios_ut',UT)}catch(_){} render(); } if(sem){ SEM = sem; } tab('menu'); if(sem){ SEM = sem; if(op && op.f){ DIA = (pd(op.f).getDay()+6)%7; DIAkey = cui+'|'+sem; } llenarSem(true); hoja(); }
+window.__verMenu = (cui, sem, op) => { FOCO = op ? Object.assign({cui}, op) : null; SA = cui; const s0=byCui[cui]; if(s0 && !sel().includes(s0)){ UT='TODAS'; CG=''; SAF=''; $('#fUT').value=UT; llenarFiltros(); render(); } if(sem){ SEM = sem; } tab('menu'); if(sem){ SEM = sem; if(op && op.f){ DIA = (pd(op.f).getDay()+6)%7; DIAkey = cui+'|'+sem; } llenarSem(true); hoja(); }
   if(op && op.f){ requestAnimationFrame(()=>{ const sh=$('#sheet'); const th=sh.querySelector('th.fo'); const top=sh.getBoundingClientRect().top+window.scrollY-70; window.scrollTo(0, Math.max(0,top));
     if(th && sh.scrollWidth>sh.clientWidth) sh.scrollLeft = Math.max(0, th.offsetLeft - sh.clientWidth/2 + th.offsetWidth/2); }); }
   else window.scrollTo(0,0); };
@@ -1266,20 +1304,21 @@ $('#segMacV').addEventListener('click', e=>{ const b=e.target.closest('[data-vis
 let rzT; window.addEventListener('resize', ()=>{ clearTimeout(rzT); rzT=setTimeout(graficoMacro, 150); }, {signal: AC.signal});
 // con una UT/OCT filtrada, su nombre va en los títulos de las secciones (y las tablas dejan de repetirlo en una columna)
 function titulosUT(){
-  const hu = document.querySelector('#hUT'); if (hu) hu.textContent = UT==='TODAS' ? '' : ' · '+UT;
+  const tag = UT==='TODAS' ? '' : ' · '+UT+(CG?' · CG '+CG:'')+(SAF?' · '+(byCui[SAF]||{}).sa:'');
+  const hu = document.querySelector('#hUT'); if (hu) hu.textContent = tag;
   document.querySelectorAll('#vRes section > h2, #vEnv section > h2, h3.ut-t, #nutHead').forEach(h=>{
     h.querySelectorAll('.uttag').forEach(x=>x.remove());
     if (UT==='TODAS') return;
-    const t = document.createElement('span'); t.className='uttag'; t.textContent = ' · '+UT;
+    const t = document.createElement('span'); t.className='uttag'; t.textContent = tag;
     const chip = h.querySelector('.chip, .nut-src'); chip ? h.insertBefore(t, chip) : h.appendChild(t);
   });
 }
 function render(){ titulosUT(); kpis(); coberturaNut(); avance(); porDia(); ultimos(); calidad(); ejec(); nino(); foods(); alertasAporte(); resumenCob(); resumenMacro(); graficoMacro(); alertasMacro(); prov(); detalle(); if(!$('#vMen').hidden) menuSemanal(true); }
 const E0 = arguments[2];
-if (E0){ if (E0.SA) SA=E0.SA; if (E0.UT && (E0.UT==='TODAS' || uts.includes(E0.UT))){ UT=E0.UT; $('#fUT').value=UT; } if (E0.SEM!=null) SEM=E0.SEM; openCui=E0.openCui; sortK=E0.sortK; sortD=E0.sortD; macSel=E0.macSel; macVista=E0.macVista; $('#q').value=E0.q||''; DIA=E0.DIA; DIAkey=E0.DIAkey; FOCO=E0.FOCO;
+if (E0){ if (E0.SA) SA=E0.SA; if (E0.UT && (E0.UT==='TODAS' || uts.includes(E0.UT))){ UT=E0.UT; $('#fUT').value=UT; } CG=E0.CG||''; SAF=E0.SAF||''; llenarFiltros(); if (E0.SEM!=null) SEM=E0.SEM; openCui=E0.openCui; sortK=E0.sortK; sortD=E0.sortD; macSel=E0.macSel; macVista=E0.macVista; $('#q').value=E0.q||''; DIA=E0.DIA; DIAkey=E0.DIAkey; FOCO=E0.FOCO;
   if (E0.metric==='kg'){ metric='kg'; $('#mK').setAttribute('aria-pressed','true'); $('#mS').setAttribute('aria-pressed','false'); } }
 render();
 if(location.hash==='#menu-semanal') tab('menu'); else if(location.hash==='#envios') tab('env');
-return { estado: () => ({SA, UT, SEM, openCui, sortK, sortD, metric, macSel, macVista, q:$('#q').value, DIA, DIAkey, FOCO}) };
+return { estado: () => ({SA, UT, CG, SAF, SEM, openCui, sortK, sortD, metric, macSel, macVista, q:$('#q').value, DIA, DIAkey, FOCO}) };
 }
 

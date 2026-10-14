@@ -25,6 +25,10 @@ table.rc td.bajo,.rc-dz .bajo{color:var(--bad);font-weight:700}
 table.rc td.igual,.rc-dz .igual{color:var(--magenta);font-weight:700}
 table.rc td.bajo,table.rc td.igual{text-decoration:underline dotted;text-underline-offset:3px;cursor:help}
 .rc-dz{font-size:13.5px;margin:8px 0 0;line-height:1.5}
+
+/* filtros de comité y servicio; tooltip sobre las ventanas emergentes */
+.bar .fgrp #fCG,.bar .fgrp #fSAF{max-width:250px}
+#tip{z-index:40}
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -137,7 +141,7 @@ svg .ax{stroke:var(--rule);stroke-width:1}
 .hb>.hbar{display:contents}
 .hb>.hbar>*{margin-block:4px}
 .hb>:not(.hbar){grid-column:1/-1}
-#tip{position:fixed;z-index:20;pointer-events:none;background:var(--ink);color:var(--bg);font-size:13px;line-height:1.35;padding:7px 10px;border-radius:7px;max-width:280px;opacity:0;transition:opacity .08s}
+#tip{position:fixed;z-index:40;pointer-events:none;background:var(--ink);color:var(--bg);font-size:13px;line-height:1.35;padding:7px 10px;border-radius:7px;max-width:280px;opacity:0;transition:opacity .08s}
 #tip.on{opacity:1}
 .drawer{margin-top:12px;background:var(--surface);border:1px solid var(--azul);border-radius:var(--r);padding:16px 18px}
 .drawer h3{margin:0;font-family:var(--f-display);font-stretch:85%;font-size:20px}
@@ -330,6 +334,8 @@ h3.ut-t .uttag{margin-right:6px}
     </div>
     <span class="fgrp" title="Entre paréntesis, los envíos vigentes"><label for="fMes">Mes</label><select id="fMes"></select></span>
     <span class="fgrp" title="Entre paréntesis, los envíos vigentes"><label for="fUT">Unidad territorial</label><select id="fUT"></select></span>
+    <span class="fgrp" title="Entre paréntesis, los envíos vigentes"><label for="fCG">Comité de gestión</label><select id="fCG"></select></span>
+    <span class="fgrp"><label for="fSAF">Servicio alimentario</label><select id="fSAF"></select></span>
     <nav aria-label="Secciones" id="navRes">
       <a href="#presupuesto">Presupuesto</a><a href="#alimentos">Alimentos</a><a href="#aporte">Aporte</a><a href="#calidad">Calidad</a><a href="#detalle">Detalle</a>
     </nav>
@@ -347,7 +353,7 @@ h3.ut-t .uttag{margin-right:6px}
     <div class="grid2">
       <div class="panel">
         <h3 id="hEjec">Uso del presupuesto por servicio alimentario</h3>
-        <p class="note">Costo del menú entre el presupuesto calculado. A la derecha, el saldo que queda sin usar; en ámbar y con signo +, lo que el costo excede al presupuesto. La línea punteada marca el 100 % del presupuesto. Toque un nombre para ver su detalle.</p>
+        <p class="note">Costo del menú entre el presupuesto calculado. A la derecha, el saldo que queda sin usar; en ámbar y con signo +, lo que el costo excede al presupuesto. La línea punteada marca el 100 % del presupuesto. Toque un nombre para ver solo esa UT/OCT o ese servicio alimentario.</p>
         <div id="cEjec"></div>
       </div>
       <div class="panel">

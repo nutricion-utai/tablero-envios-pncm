@@ -301,7 +301,7 @@ function ejec(){
     return;
   }
   const L = [...sel()].sort((a,b)=>b.ejec-a.ejec);
-  hbars($('#cEjec'), L.map(s=>({name:s.sa, go:s.cui, value:s.ejec, color: s.ejec>1?'var(--warn)':'var(--azul)',
+  hbars($('#cEjec'), L.map((s,i)=>({name:(i+1)+'. '+s.sa, go:s.cui, value:s.ejec, color: s.ejec>1?'var(--warn)':'var(--azul)',
     label: nf0.format(s.ejec*100)+' % · '+sal(s.presT-s.costT),
     tip: '<b>'+esc(s.sa)+'</b> (CUI '+s.cui+') · '+AMB[s.amb]+(s.rn?' ('+s.rn.toLowerCase()+')':'')+'<br>Presupuesto calculado '+S2(s.presT)+'<br>Costo '+S2(s.costT)+'<br>Saldo '+S2(s.presT-s.costT)+'<br>Presupuesto registrado en el envío '+S2(s.presReg)})), {max:Math.max(1,...L.map(s=>s.ejec)), ref:1, refTip:'100 % del presupuesto calculado'});
   if (L.some(s=>s.ejec>1)) $('#cEjec').insertAdjacentHTML('beforeend','<p class="note" style="margin-top:8px"><i class="sw" style="background:var(--warn)"></i>El costo supera el presupuesto calculado.</p>');
@@ -317,7 +317,7 @@ function nino(){
   }
   const L = sel().filter(s=>s.ninoDia).sort((a,b)=>b.ninoDia-a.ninoDia);
   const md = median(L.map(s=>s.ninoDia));
-  hbars($('#cNino'), L.map(s=>({name:s.sa, go:s.cui, value:s.ninoDia, label:S2(s.ninoDia),
+  hbars($('#cNino'), L.map((s,i)=>({name:(i+1)+'. '+s.sa, go:s.cui, value:s.ninoDia, label:S2(s.ninoDia),
     tip:'<b>'+esc(s.sa)+'</b><br>'+S2(s.costCons[0])+' (pedido '+S2(s.cost[0])+' y saldos '+S2(s.saldo[0])+') para '+s.ninos+' niñas y niños en '+s.dias+' días · tarifa '+AMB[s.amb].toLowerCase()+' S/ '+nf2.format(TARIFA[s.amb][0])})), {ref:md});
 }
 
@@ -513,7 +513,7 @@ function detalle(){
   drawer();
 }
 $('#tSA').addEventListener('click', e=>{
-  const th = e.target.closest('th'); if(th){ const k=th.dataset.k; if(sortK===k) sortD=-sortD; else {sortK=k; sortD=(k==='sa'||k==='ut')?1:-1;} detalle(); return; }
+  const th = e.target.closest('th'); if(th){ const k=th.dataset.k; if(!k) return; if(sortK===k) sortD=-sortD; else {sortK=k; sortD=(k==='sa'||k==='ut')?1:-1;} detalle(); return; }
   if (e.target.closest('a')) return;   // enlaces dentro de la fila (p. ej., días bajo la meta) no abren la ficha
   const tu = e.target.closest('tr[data-ut]'); if(tu){ $('#q').value=''; fijarFiltro(tu.dataset.ut, '', ''); $('#detalle').scrollIntoView({behavior:'smooth', block:'start'}); return; }
   const tr = e.target.closest('tr[data-cui]'); if(tr){ openCui = openCui===tr.dataset.cui?null:tr.dataset.cui; detalle(); if(openCui) $('#drawer').scrollIntoView({behavior:'smooth',block:'nearest'}); }
@@ -1313,6 +1313,101 @@ function titulosUT(){
     const chip = h.querySelector('.chip, .nut-src'); chip ? h.insertBefore(t, chip) : h.appendChild(t);
   });
 }
+// ================= N° EN LOS LISTADOS Y DESCARGA EN PNG =================
+// Cada listado de UT/OCT o de servicios alimentarios empieza con N°: se agrega cada vez que la tabla se vuelve a dibujar.
+function numerar(t){
+  if (!t || !t.tHead || !t.tBodies.length) return;
+  const hr = t.tHead.rows[0]; if (!hr || hr.querySelector('.nro')) return;
+  const th = document.createElement('th'); th.className = 'n nro'; th.textContent = 'N°'; hr.insertBefore(th, hr.firstChild);
+  let i = 0;
+  [...t.tBodies[0].rows].forEach(tr=>{
+    if (tr.cells.length===1 && tr.cells[0].colSpan>1){ tr.cells[0].colSpan++; return; }
+    const td = document.createElement('td'); td.className = 'n nro'; td.textContent = String(++i); tr.insertBefore(td, tr.firstChild); });
+}
+{ const obs = new MutationObserver(ms=>{ const vistos = new Set();
+    ms.forEach(m=>{ const t = m.target; if (t.tagName==='TABLE') vistos.add(t); else t.querySelectorAll && t.querySelectorAll('table.lst').forEach(x=>vistos.add(x)); });
+    vistos.forEach(numerar); });
+  ['tAv','tUlt','tSA','tAp','tApMac'].forEach(id=>{ const t = document.getElementById(id); if (t) obs.observe(t, {childList:true}); });
+  const rc = document.getElementById('rcBox'); if (rc) obs.observe(rc, {childList:true});
+  AC.signal.addEventListener('abort', ()=>obs.disconnect()); }
+
+// Descarga de cualquier tabla o gráfico como imagen PNG (con su título, la selección y la fecha de los datos)
+let H2I = null;
+const cargarH2I = () => window.htmlToImage ? Promise.resolve(window.htmlToImage) : (H2I = H2I || new Promise((ok, mal)=>{
+  const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js';
+  s.onload = ()=> window.htmlToImage ? ok(window.htmlToImage) : mal(new Error('sin generador'));
+  s.onerror = ()=>{ H2I = null; mal(new Error('No se pudo cargar el generador de imágenes')); };
+  document.head.appendChild(s); }));
+const slugPNG = t => String(t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,70);
+const ICO_PNG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>';
+function botonesPNG(){
+  const fila = () => { const d = document.createElement('div'); d.className = 'pngfila'; d.innerHTML = '<button type="button" class="pngbtn" title="Descargar como imagen PNG">'+ICO_PNG+'PNG</button>'; return d; };
+  document.querySelectorAll('#vRes .panel, #vEnv .panel').forEach(p=>{
+    if (p.dataset.png || !p.querySelector('table, #cEjec, #cNino, #cFood, #cGrupo, #cMacG, #cProvNP, #cProvP, #cDia')) return;
+    p.dataset.png = '1'; const f = fila();
+    if (p.classList.contains('scroll')){ f._panel = p; p.after(f); } else p.appendChild(f);   // en un panel con desplazamiento, el botón va debajo
+  });
+  const sh = document.getElementById('sheet');
+  if (sh && !sh.dataset.png){ sh.dataset.png = '1'; const f = fila(); f._panel = sh; sh.after(f); }
+}
+// título: el del panel (h3) o, si no tiene, el encabezado que lo precede; arriba, el de la sección
+function titulosPNG(p){
+  const sec = p.closest('section'), h2 = sec && sec.querySelector('h2');
+  const ante = h2 ? h2.textContent.trim() : '';
+  if (p.querySelector('h3') || p.id==='sheet') return {ante, tit:''};
+  let x = p.previousElementSibling;
+  while (x){ if (/^H[23]$/.test(x.tagName)) return {ante: x.tagName==='H2' ? '' : ante, tit: x.textContent.trim()}; x = x.previousElementSibling; }
+  return {ante:'', tit: ante};
+}
+async function guardarArchivo(blob, nombre){
+  let dl = null;
+  try { if (window.claude && typeof window.claude.use==='function') dl = await window.claude.use('downloads'); } catch(_) {}
+  if (dl){
+    try { await dl.save({filename: nombre, data: blob}); return; }
+    catch(e){ if (e && e.code==='declined') return; if (e && !['unavailable','not_granted','capability_disabled','capability_removed'].includes(e.code)) throw e; }
+  }
+  const u = URL.createObjectURL(blob), a = document.createElement('a'); a.href = u; a.download = nombre;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(u), 5000);
+}
+async function exportarPNG(btn){
+  const f = btn.closest('.pngfila'), p = f._panel || f.closest('.panel'); if (!p || p.hidden) return;
+  const txt = btn.innerHTML; btn.disabled = true; btn.innerHTML = ICO_PNG+'Generando…';
+  let w = null;
+  try {
+    const H = await cargarH2I();
+    const {ante, tit} = titulosPNG(p);
+    const cs = getComputedStyle(document.body);
+    let ancho = p.offsetWidth; [p, ...p.querySelectorAll('.scroll, table')].forEach(x=>{ ancho = Math.max(ancho, x.scrollWidth); });
+    w = document.createElement('div'); w.className = 'pngexp';
+    w.style.cssText = 'position:fixed;left:-30000px;top:0;box-sizing:border-box;padding:18px 22px 14px;width:'+(ancho+44)+'px;background:'+cs.backgroundColor+';color:'+cs.color;
+    if (ante) { const a = document.createElement('div'); a.className = 'pngante'; a.textContent = ante; w.appendChild(a); }
+    if (tit) { const t = document.createElement('div'); t.className = 'pngtit'; t.textContent = tit; w.appendChild(t); }
+    const c = p.cloneNode(true);
+    c.querySelectorAll('.pngfila').forEach(x=>x.remove()); c.removeAttribute('id');
+    c.style.overflow = 'visible'; c.style.width = ancho+'px'; c.style.maxWidth = 'none'; c.style.boxSizing = 'border-box'; c.style.margin = '0';
+    c.querySelectorAll('.scroll').forEach(x=>{ x.style.overflow = 'visible'; });
+    c.querySelectorAll('th, td').forEach(x=>{ if (x.style.transform) x.style.transform = ''; });
+    w.appendChild(c);
+    const sel = UT==='TODAS' ? 'Todas las UT/OCT' : UT+(CG?' · CG '+CG:'')+(SAF?' · '+(byCui[SAF]||{}).sa:'');
+    const pie = document.createElement('div'); pie.className = 'pngpie';
+    pie.textContent = 'Envíos del menú · '+mesTxt(D.periodo)+' · '+sel+(/^\d{4}-\d{2}-\d{2}/.test(String(D.corte)) ? ' · datos al '+D.corte.slice(8,10)+'/'+D.corte.slice(5,7)+'/'+D.corte.slice(0,4)+' '+D.corte.slice(11)+' h' : '')+' · Programa Nacional Cuna Más';
+    w.appendChild(pie);
+    document.body.appendChild(w);
+    const op = {pixelRatio: 2, style: {position:'static', left:'0', top:'0'}};
+    let blob;
+    try { blob = await H.toBlob(w, op); } catch(e){ blob = await H.toBlob(w, Object.assign({skipFonts:true}, op)); }   // si las fuentes no se pueden incrustar
+    const nom = 'envios_'+D.periodo+'_'+(slugPNG(tit || (p.querySelector('h3')||{}).textContent || (p.id==='sheet' ? 'menu-semanal' : ante)) || 'tabla')+'.png';
+    await guardarArchivo(blob, nom);
+    btn.innerHTML = txt;
+  } catch(e){
+    console.error('PNG', e); btn.innerHTML = ICO_PNG+'No se pudo generar'; setTimeout(()=>{ btn.innerHTML = txt; }, 3000);
+  } finally {
+    if (w) w.remove(); btn.disabled = false;
+  }
+}
+botonesPNG();
+on('click', e=>{ const b = e.target.closest('.pngbtn'); if (b){ e.preventDefault(); exportarPNG(b); } });
+
 function render(){ titulosUT(); kpis(); coberturaNut(); avance(); porDia(); ultimos(); calidad(); ejec(); nino(); foods(); alertasAporte(); resumenCob(); resumenMacro(); graficoMacro(); alertasMacro(); prov(); detalle(); if(!$('#vMen').hidden) menuSemanal(true); }
 const E0 = arguments[2];
 if (E0){ if (E0.SA) SA=E0.SA; if (E0.UT && (E0.UT==='TODAS' || uts.includes(E0.UT))){ UT=E0.UT; $('#fUT').value=UT; } CG=E0.CG||''; SAF=E0.SAF||''; llenarFiltros(); if (E0.SEM!=null) SEM=E0.SEM; openCui=E0.openCui; sortK=E0.sortK; sortD=E0.sortD; macSel=E0.macSel; macVista=E0.macVista; $('#q').value=E0.q||''; DIA=E0.DIA; DIAkey=E0.DIAkey; FOCO=E0.FOCO;

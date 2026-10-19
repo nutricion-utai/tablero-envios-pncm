@@ -87,7 +87,7 @@ function envFiltro(){
 
 // tooltip
 const tip = $('#tip');
-on('mouseover', e => { const t = e.target.closest('[data-tip]'); if(!t){tip.classList.remove('on');return;} tip.innerHTML = t.getAttribute('data-tip'); tip.classList.add('on'); });
+on('mouseover', e => { const t = e.target.closest('[data-tip]'); if(!t){tip.classList.remove('on');return;} tip.innerHTML = t.getAttribute('data-tip'); tip.classList.toggle('w', t.hasAttribute('data-tipw')); tip.classList.add('on'); });
 on('mousemove', e => { if(!tip.classList.contains('on')) return; const w=tip.offsetWidth,h=tip.offsetHeight; let x=e.clientX+14,y=e.clientY+14; if(x+w>innerWidth-8) x=e.clientX-w-14; if(y+h>innerHeight-8) y=e.clientY-h-14; tip.style.left=x+'px'; tip.style.top=y+'px'; });
 on('scroll', ()=>tip.classList.remove('on'), {passive:true});
 
@@ -266,6 +266,77 @@ function porDia(){
 }
 
 // -------- últimos envíos recibidos (con una UT/OCT filtrada, solo los de esa UT/OCT)
+// ================= CAMBIOS EN LOS REENVÍOS =================
+// Cada fila de D.envs trae en [6] lo que cambió respecto del envío anterior del mismo servicio (null en el primer envío).
+const nfG = new Intl.NumberFormat('es-PE',{maximumFractionDigits:2});
+const GR_U = ['6-8 m','9-11 m','12-23 m','24-36 m'], GR_AC = ['madre cuidadora','madre guía','socia de cocina'], GR_RC = ['6-8 m','9-11 m','12-23 m','24-36 m','AC'];
+const TIEMPO_CB = ['Media mañana','Almuerzo 6-8 m','Almuerzo 9-36 m','Media tarde','Fruta'];
+const PROV_CB = {NP:'no perecibles', P:'perecibles'};
+const DIR_CB = {s:'subió', b:'bajó', n:'nuevo', q:'ya no figura'};
+const capCb = t => { t = String(t||'').toLowerCase().replace(/\buht\b/g,'UHT'); return t.charAt(0).toUpperCase()+t.slice(1); };
+const sgn = v => (v>0?'+':v<0?'−':'±')+nf0.format(Math.abs(v));
+function cambiosResumen(d){
+  if (d==null) return '';
+  const P = [], n = d.n||{}, cnt = k => n[k] || (d[k]||[]).length;
+  if (d.u) P.push('Niños '+sgn(d.u.reduce((a,x)=>a+x[2]-x[1],0)));
+  if (d.ac) P.push('AC '+sgn(d.ac.reduce((a,x)=>a+x[2]-x[1],0)));
+  (d.pv||[]).forEach(x=>P.push((x[1]===x[2] || !x[1] && !x[2] ? 'RUC ' : 'Proveedor ')+x[0]));
+  (d.id||[]).forEach(x=>P.push(x[0]==='sa'?'Nombre':x[0]==='cg'?'Comité':'Versión'));
+  if (d.mn) P.push('Menú: '+cnt('mn'));
+  if (d.rc) P.push('Recetas: '+cnt('rc'));
+  if (d.sd) P.push('Saldos: '+cnt('sd'));
+  if (d.pc) P.push('Precios: '+cnt('pc'));
+  if (d.pq) P.push('Cantidades del pedido');
+  if (!P.length) return d.x ? 'Sin detalle' : 'Sin cambios';
+  return P.join(' · ');
+}
+// detalle en HTML; lim = líneas por sección (el texto emergente muestra pocas, la ficha todas)
+function cambiosDetalle(d, lim){
+  if (d==null) return '';
+  const S = [], n = d.n||{};
+  const sec = (tit, L, tot) => { if (!L || !L.length) return; tot = tot || L.length;
+    const v = L.slice(0, lim); S.push('<b>'+tit+'</b><br>'+v.join('<br>')+(tot>v.length?'<br><i>y '+(tot-v.length)+' más</i>':'')); };
+  const g = v => v==null ? '—' : nfG.format(v);
+  sec('Niñas y niños', d.u && d.u.map(x=>GR_U[x[0]]+': '+x[1]+' → '+x[2]));
+  sec('Actores comunales', d.ac && d.ac.map(x=>capCb(GR_AC[x[0]])+': '+x[1]+' → '+x[2]));
+  sec('Proveedores', d.pv && d.pv.map(x=>'De '+PROV_CB[x[0]]+': '+(x[1]===x[2] ? esc(x[2]||'sin nombre')+' (cambió el RUC)' : esc(x[1]||'sin nombre')+' → '+esc(x[2]||'sin nombre')+(x[3]?' (también el RUC)':''))));
+  sec('Datos del servicio', d.id && d.id.map(x=>(x[0]==='sa'?'Nombre':x[0]==='cg'?'Comité de gestión':'Versión de la herramienta')+': '+esc(x[1]||'—')+' → '+esc(x[2]||'—')));
+  sec('Menú', d.mn && d.mn.map(x=>ddmm(pd(x[0]))+' · '+TIEMPO_CB[x[1]]+': '+(x[2] ? esc(x[2]) : '<i>sin preparación</i>')+' → '+(x[3] ? esc(x[3]) : '<i>sin preparación</i>')), n.mn);
+  sec('Recetas (gramos por ración)', d.rc && d.rc.map(([p, L])=>esc(p)+': '+L.slice(0, 4).map(([al,a,b])=>{
+      if (!a) return esc(capCb(al))+' (se agregó)'; if (!b) return esc(capCb(al))+' (se quitó)';
+      const k = a.map((x,i)=>i).filter(i=>Math.abs(a[i]-b[i])>0.005);
+      return esc(capCb(al))+' '+k.map(i=>GR_RC[i]+' '+g(a[i])+' → '+g(b[i])).join(', ');
+    }).join('; ')+(L.length>4?'; y '+(L.length-4)+' alimentos más':'')), n.rc);
+  sec('Saldos de no perecibles (kg o L)', d.sd && d.sd.map(([al,a,b])=>{ a = a||[0,0]; b = b||[0,0];
+      const t = []; if (Math.abs(a[0]-b[0])>0.0005) t.push('usuarios '+g(a[0])+' → '+g(b[0])); if (Math.abs(a[1]-b[1])>0.0005) t.push('AC '+g(a[1])+' → '+g(b[1]));
+      return esc(capCb(al))+': '+t.join(', '); }), n.sd);
+  sec('Precios cotizados', d.pc && d.pc.map(([al,t])=>esc(capCb(al))+': '+DIR_CB[t]), n.pc);
+  sec('Cantidades del pedido', d.pq && d.pq.map(([al,t])=>esc(capCb(al))+': '+DIR_CB[t]), n.pq);
+  if (d.x) S.push('<i>No se pudo leer el detalle de uno de los dos envíos; solo se comparan los datos generales.</i>');
+  if (!S.length) return 'Es igual al envío anterior en usuarios, proveedores, menú, recetas, saldos y precios.';
+  return S.join('<br>');
+}
+function celdaCambios(r, re){
+  const d = r[6];
+  if (!re) return '<td style="color:var(--muted)" data-tip="Primer envío del servicio en el mes">—</td>';
+  if (d==null) return '<td style="color:var(--muted)" data-tip="Sin resumen: estos datos se publicaron antes de que el tablero comparara los reenvíos">—</td>';
+  const t = cambiosResumen(d), igual = t==='Sin cambios';
+  return '<td class="cbcel'+(igual?' igual':'')+'" data-tipw data-tip="'+esc('<b>Cambios respecto del envío anterior</b><br>'+cambiosDetalle(d, 8))+'">'+esc(t)+'</td>';
+}
+// historial de envíos del mes en la ficha del servicio
+function historialEnvios(s){
+  const L = (D.envs||[]).filter(r=>r[2]===s.cui).slice().reverse();
+  if (!L.length) return '';
+  const fh = f => /^\d{4}-\d{2}-\d{2}/.test(f) ? ddmm(pd(f.slice(0,10)))+' '+f.slice(11,16)+' h' : 'sin fecha';
+  if (L.length===1) return '<h3 style="font-size:15px;margin:14px 0 4px">Historial de envíos del mes</h3><p class="note" style="margin:0">Un solo envío en el mes: '+fh(L[0][0])+'.</p>';
+  return '<h3 style="font-size:15px;margin:14px 0 4px">Historial de envíos del mes</h3><p class="note" style="margin:0 0 6px">'+L.length+' envíos; cada reenvío reemplaza al anterior. Toque un reenvío para ver qué cambió.</p><ol class="hist">'+
+    L.map((r,i)=>{ const est = r[5] ? '<span class="chip blue">Vigente</span>' : '<span class="chip mag">Reemplazado</span>';
+      if (!i) return '<li><div class="hcab"><span>'+fh(r[0])+'</span>'+est+'<span class="hres">Primer envío del mes</span></div></li>';
+      const d = r[6];
+      if (d==null) return '<li><div class="hcab"><span>'+fh(r[0])+'</span>'+est+'<span class="hres">Sin resumen de cambios</span></div></li>';
+      return '<li><details><summary class="hcab"><span>'+fh(r[0])+'</span>'+est+'<span class="hres">'+esc(cambiosResumen(d))+'</span></summary><div class="hdet">'+cambiosDetalle(d, 1000)+'</div></details></li>'; }).join('')+'</ol>';
+}
+
 function ultimos(){
   const box = $('#ultimos'); if (!box) return;
   if (!D.envs){ box.hidden = true; return; }
@@ -276,13 +347,13 @@ function ultimos(){
   const fh = f => /^\d{4}-\d{2}-\d{2}/.test(f) ? f.slice(8,10)+'/'+f.slice(5,7)+' '+f.slice(11,16) : 'sin fecha';
   const mes = mesTxt(D.periodo).replace(/ \d{4}$/,'');
   $('#ultLede').textContent = (L.length>10 ? 'Los 10 envíos más recientes' : L.length===1 ? 'El único envío' : 'Los '+L.length+' envíos')+
-    ' para '+mes+(tot ? ', de todas las UT/OCT' : ' '+deSel())+', del más reciente al más antiguo. Un reenvío reemplaza al envío anterior del mismo servicio alimentario.';
+    ' para '+mes+(tot ? ', de todas las UT/OCT' : ' '+deSel())+', del más reciente al más antiguo. Un reenvío reemplaza al envío anterior del mismo servicio alimentario; pase el cursor sobre sus cambios para ver el detalle.';
   if (!top.length){ $('#tUlt').innerHTML = ''; $('#ultLede').textContent = 'Todavía no hay envíos para '+mes+(tot?'':' '+deSel())+'.'; return; }
-  $('#tUlt').innerHTML = '<thead><tr><th>Recibido</th>'+(tot?'<th>UT/OCT</th>':'')+'<th>Servicio alimentario</th><th class="n">CUI</th><th>Estado</th></tr></thead><tbody>'+
+  $('#tUlt').innerHTML = '<thead><tr><th>Recibido</th>'+(tot?'<th>UT/OCT</th>':'')+'<th>Servicio alimentario</th><th class="n">CUI</th><th>Estado</th><th>Cambios respecto del envío anterior</th></tr></thead><tbody>'+
     top.map(({r,re})=>{ const s = r[5] && byCui[r[2]];
       return '<tr><td style="white-space:nowrap">'+fh(r[0])+'</td>'+(tot?'<td>'+utLink(r[4])+'</td>':'')+'<td>'+(s?saA(s):esc(r[3]))+'</td><td class="n">'+esc(r[2])+'</td><td style="white-space:nowrap">'+
         (r[5]?'<span class="chip blue">Vigente</span>':'<span class="chip mag" title="El mismo servicio volvió a enviar; cuenta el envío más reciente">Reemplazado</span>')+
-        (re?' <span class="chip gris" title="El servicio ya había enviado antes en este mes">Reenvío</span>':'')+'</td></tr>'; }).join('')+'</tbody>';
+        (re?' <span class="chip gris" title="El servicio ya había enviado antes en este mes">Reenvío</span>':'')+'</td>'+celdaCambios(r, re)+'</tr>'; }).join('')+'</tbody>';
 }
 
 // -------- presupuesto
@@ -443,7 +514,7 @@ function calidad(){
 function irDetalle(cui){
   const s = byCui[cui]; if(!s) return;
   if ($('#vRes').hidden) tab('res');
-  if (!sel().includes(s)){ UT=s.ut; CG=''; SAF=''; $('#fUT').value=UT; llenarFiltros(); }   // el detalle solo existe con la UT filtrada
+  if (UT==='TODAS' || !sel().includes(s)){ UT=s.ut; CG=''; SAF=''; $('#fUT').value=UT; llenarFiltros(); }   // el detalle solo existe con la UT filtrada
   $('#q').value=''; openCui = cui; render();
   const tr = document.querySelector('#tSA tr[data-cui="'+cui+'"]');
   (tr||$('#detalle')).scrollIntoView({behavior:'smooth', block:'center'});
@@ -535,6 +606,7 @@ function drawer(){
     '<div class="grid2"><div><h3 style="font-size:15px;margin:6px 0">Pedido: 10 alimentos de mayor costo</h3><div id="dF"></div></div><div><h3 style="font-size:15px;margin:6px 0">Menú: preparaciones por tiempo de comida</h3><div style="font-size:13px">'+
     (detOk !== true ? '<p class="note">Cargando…</p>' : porT.map((rows,i)=>'<p style="margin:6px 0"><b>'+['Media mañana','Almuerzo','Media tarde','Fruta'][i]+':</b> '+rows.slice(0,6).map(r=>esc(D.preps[r[2]])+' ('+r[3]+' d)').join(', ')+(rows.length>6?', y '+(rows.length-6)+' más':'')+'</p>').join(''))+
     '</div></div></div></div>';
+  $('#drawer .drawer').insertAdjacentHTML('beforeend', historialEnvios(s));
   hbars($('#dF'), f.slice(0,10).map(r=>({name:D.alimentos[r[1]][0], value:r[4], color:r[2]?'var(--magenta)':'var(--azul)', label:S0(r[4]), tip:esc(D.alimentos[r[1]][0])+'<br>'+nf1.format(r[3])+' kg o L · '+P1(tf?r[4]/tf:0)})), {});
 }
 

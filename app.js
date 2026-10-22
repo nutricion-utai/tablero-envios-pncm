@@ -208,12 +208,26 @@ function coberturaNut(){
 function avance(){
   // los servicios con un CUI que no está en el padrón cuentan como enviados y se suman a los esperados de su UT/OCT
   const env = {}, fu = {}; D.sa.forEach(s=>{ (env[s.ut]=env[s.ut]||new Set()).add(s.cuiPad||s.cui); if(!s.padron) fu[s.ut]=(fu[s.ut]||0)+1; });
-  const rows = Object.keys(env).map(u=>({u, n:env[u].size, f:fu[u]||0, e:(D.padUT[u]||0)+(fu[u]||0)})).sort((a,b)=>b.n/b.e-a.n/a.e);
+  const rows = Object.keys(env).map(u=>({u, n:env[u].size, f:fu[u]||0, e:(D.padUT[u]||0)+(fu[u]||0)}));
+  const conFecha = !!D.envs;
+  if (conFecha){
+    const utDe = {}; D.sa.forEach(s=>{ utDe[s.cuiPad||s.cui] = s.ut; });
+    const pri = {};   // primer envío de cada servicio: {UT: {CUI: [fecha, servicio]}}
+    D.envs.forEach(r=>{ const u = utDe[r[2]] || r[4], f = r[1]; if (!/^\d{4}-\d{2}-\d{2}/.test(f)) return;
+      const o = pri[u] || (pri[u] = {}); if (!o[r[2]] || f < o[r[2]][0]) o[r[2]] = [f, r[3]]; });
+    rows.forEach(r=>{ if (r.n < r.e || !pri[r.u]) return;
+      const L = Object.values(pri[r.u]).sort((a,b)=>a[0]<b[0]?-1:a[0]>b[0]?1:0);
+      const k = Math.min(r.e, L.length) - 1; if (k < 0) return;
+      r.f100 = L[k][0]; r.ult = L[k][1]; });
+  }
+  rows.sort((a,b)=>b.n/b.e-a.n/a.e || (a.f100&&b.f100 ? (a.f100<b.f100?-1:a.f100>b.f100?1:0) : 0));
+  const f100 = r => r.f100 ? '<td class="f100" data-tip="'+esc('Llegó al 100 % con el envío de '+r.ult+' ('+r.f100.slice(8,10)+'/'+r.f100.slice(5,7)+'/'+r.f100.slice(0,4)+' '+r.f100.slice(11,16)+' h)')+'">'+r.f100.slice(8,10)+'/'+r.f100.slice(5,7)+'<span class="hh">'+r.f100.slice(11,16)+' h</span></td>'
+                        : '<td style="color:var(--muted)">—</td>';
   const tn = sum(rows.map(r=>r.n)), tf = sum(rows.map(r=>r.f));
-  $('#avLede').textContent = 'Servicios alimentarios que ya tienen un envío vigente para '+mesTxt(D.periodo).replace(/ \d{4}$/,'')+'. Un envío vigente es el último que mandó cada servicio, identificado por su CUI del padrón; los anteriores quedan reemplazados. Los que enviaron con un CUI que no está en el padrón también se cuentan y se suman a los esperados de su UT/OCT.';
+  $('#avLede').textContent = 'Servicios alimentarios que ya tienen un envío vigente para '+mesTxt(D.periodo).replace(/ \d{4}$/,'')+'. Un envío vigente es el último que mandó cada servicio, identificado por su CUI del padrón; los anteriores quedan reemplazados. Los que enviaron con un CUI que no está en el padrón también se cuentan y se suman a los esperados de su UT/OCT.'+(D.envs?' «Llegó al 100 %» es la fecha y hora del primer envío del último servicio que faltaba.':'');
   $('#avNote').textContent = tn + ' servicios alimentarios con envío vigente'+(tf?' ('+tf+' con CUI fuera del padrón)':'')+', en ' + rows.length + ' unidades territoriales.';
-  $('#tAv').innerHTML = '<thead><tr><th>UT/OCT</th><th class="n">Esperados</th><th class="n">Enviaron</th><th>Avance</th><th class="n">%</th></tr></thead><tbody>'+
-    rows.map(r=>'<tr'+(UT===r.u?' style="background:var(--azul-soft)"':'')+'><td><a href="#" class="salink" data-ut="'+esc(UT===r.u?'TODAS':r.u)+'" title="'+(UT===r.u?'Quitar el filtro de UT':'Filtrar por '+esc(r.u))+'">'+esc(r.u)+'</a>'+(UT===r.u?' <span class="chip blue" style="margin-left:4px">filtro activo</span>':'')+'</td><td class="n">'+r.e+(r.f?'<span style="display:block;font-size:11.5px;color:var(--muted)">incluye '+r.f+' fuera del padrón</span>':'')+'</td><td class="n">'+r.n+'</td><td><div class="minibar"><span style="width:'+(r.e?r.n/r.e*100:0)+'%"></span></div></td><td class="n">'+nf0.format(r.e?r.n/r.e*100:0)+' %</td></tr>').join('')+'</tbody>';
+  $('#tAv').innerHTML = '<thead><tr><th>UT/OCT</th><th class="n">Esperados</th><th class="n">Enviaron</th><th>Avance</th>'+(conFecha?'<th class="f100">Llegó al 100 %</th>':'')+'</tr></thead><tbody>'+
+    rows.map(r=>'<tr'+(UT===r.u?' style="background:var(--azul-soft)"':'')+'><td><a href="#" class="salink" data-ut="'+esc(UT===r.u?'TODAS':r.u)+'" title="'+(UT===r.u?'Quitar el filtro de UT':'Filtrar por '+esc(r.u))+'">'+esc(r.u)+'</a>'+(UT===r.u?' <span class="chip blue" style="margin-left:4px">filtro activo</span>':'')+'</td><td class="n">'+r.e+(r.f?'<span style="display:block;font-size:11.5px;color:var(--muted)">incluye '+r.f+' fuera del padrón</span>':'')+'</td><td class="n">'+r.n+'</td><td><div class="avc"><div class="minibar"><span style="width:'+(r.e?Math.min(100,r.n/r.e*100):0)+'%"></span></div><span>'+nf0.format(r.e?r.n/r.e*100:0)+' %</span></div></td>'+(conFecha?f100(r):'')+'</tr>').join('')+'</tbody>';
   const sin = Object.keys(D.padUT).filter(u=>!env[u]).sort();
   $('#sinEnv').innerHTML = '<b>Todavía sin envíos ('+sin.length+'):</b> '+sin.map(esc).join(', ')+'.';
   faltan(env);

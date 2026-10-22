@@ -53,6 +53,15 @@ ol.hist summary.hcab{cursor:pointer}
 ol.hist .hcab>span:first-child{font-variant-numeric:tabular-nums;white-space:nowrap;min-width:92px}
 ol.hist .hres{color:var(--ink2)}
 ol.hist .hdet{margin:6px 0 4px 18px;line-height:1.45;color:var(--ink2)}
+
+/* avance por UT/OCT: barra y % juntos; más ancho para la fecha del 100 % */
+.avc{display:flex;align-items:center;gap:8px}
+.avc .minibar{flex:1;min-width:56px}
+.avc>span{font-variant-numeric:tabular-nums;white-space:nowrap;min-width:42px;text-align:right}
+th.f100{white-space:normal;min-width:78px;max-width:90px}
+td.f100{white-space:nowrap;font-variant-numeric:tabular-nums}
+td.f100 .hh{display:block;font-size:12px;color:var(--muted)}
+@media (min-width:1000px){#avance .grid2{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)}}
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

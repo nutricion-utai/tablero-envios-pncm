@@ -62,6 +62,9 @@ th.f100{white-space:normal;min-width:78px;max-width:90px}
 td.f100{white-space:nowrap;font-variant-numeric:tabular-nums}
 td.f100 .hh{display:block;font-size:12px;color:var(--muted)}
 @media (min-width:1000px){#avance .grid2{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)}}
+
+/* 8 tarjetas: 5 arriba y 3 abajo (las de costo, más anchas) */
+@media (min-width:900px){#kpis{grid-template-columns:repeat(60,1fr)}#kpis .kpi{grid-column:span 12}#kpis .kpi:nth-child(n+6){grid-column:span 20}#kpis .kpi .labw .lab{white-space:normal}}
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

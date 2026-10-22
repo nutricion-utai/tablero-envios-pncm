@@ -131,10 +131,11 @@ const ICO = {
  pct:'<path d="M12 3v9h9"/><path d="M21 12a9 9 0 1 1-9-9"/>',
  fe:'<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/><path d="M9.5 14.5a2.5 2.5 0 0 0 2.5 2.5"/>',
  zn:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/>',
+ meta:'<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.5"/>',
  ca:'<path d="M17 3a2.5 2.5 0 0 1 2.4 3.2A2.5 2.5 0 1 1 17.8 10L10 17.8a2.5 2.5 0 1 1-3.8 1.6A2.5 2.5 0 1 1 6.2 14.2L14 6.2A2.5 2.5 0 0 1 17 3z"/>'
 };
 const ICO_TARJ = {'servicios con envío vigente':'sa','unidades territoriales':'ut','envíos vigentes':'send','niñas y niños':'nino','actores comunales':'ac','costo del menú':'costo',
-  'costo por niño y día':'dia','costo por actor comunal y día':'dia','calorías':'kcal','proteínas':'prot','% kcal de proteínas':'pct','hierro':'fe','zinc':'zn','calcio':'ca'};
+  'ut/oct al 100 %':'meta','costo por niño y día':'dia','costo por actor comunal y día':'dia','calorías':'kcal','proteínas':'prot','% kcal de proteínas':'pct','hierro':'fe','zinc':'zn','calcio':'ca'};
 const labI = t => { const k = ICO_TARJ[String(t).toLowerCase()];
   return '<span class="labw">'+(k?'<span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24">'+ICO[k]+'</svg></span>':'')+'<span class="lab">'+t+'</span></span>'; };
 function kpis(){
@@ -153,9 +154,21 @@ function kpis(){
   // debajo del promedio: promedio por ámbito y, al lado, el costo por día que fija el Anexo A de la Directiva del modelo de cogestión comunal
   const subAmb = i => '<span class="amb">'+[['Urbano',U,TARIFA.U[i]],['Rural o selva',R,TARIFA.R[i]]].map(([n,ss,t])=>{ const p=prom(ss,i);
       return '<span>'+n+' <b>'+(p!=null?S2(p):'—')+'</b> <span class="dir">de S/ '+nf2.format(t)+'</span></span>'; }).join('')+'</span>';
+  const AV = filasAvance(), comp = AV.rows.filter(r=>r.n>=r.e);
+  const fecha100 = f => f.slice(8,10)+'/'+f.slice(5,7)+'/'+f.slice(0,4)+' '+f.slice(11,16)+' h';
+  let t100;
+  if (UT==='TODAS') t100 = ['UT/OCT al 100 %', nf0.format(comp.length), 'de '+utsTot+' completaron sus envíos del mes',
+      'Unidades territoriales en las que todos los servicios del padrón, y los que enviaron con un CUI fuera del padrón, tienen un envío vigente. La fecha en que cada una llegó al 100 % está en Envíos › Avance de los envíos.'];
+  else { const r = AV.rows.find(x=>x.u===UT), n = r ? r.n : 0, e = r ? r.e : (D.padUT[UT]||0);
+    t100 = r && r.n>=r.e
+      ? ['UT/OCT al 100 %', r.f100 ? r.f100.slice(8,10)+'/'+r.f100.slice(5,7) : 'Sí', r.f100 ? 'a las '+r.f100.slice(11,16)+' h, con el envío de '+esc(r.ult) : 'todos sus servicios tienen envío vigente',
+         'Fecha y hora del primer envío del último servicio que faltaba en la UT/OCT'+(r.f100?' ('+fecha100(r.f100)+')':'')+'. Considera toda la UT/OCT, aunque haya un comité o servicio elegido.']
+      : ['UT/OCT al 100 %', '—', 'faltan '+nf0.format(e-n)+(e-n===1?' servicio':' servicios')+' de '+nf0.format(e)+' ('+P1(e?n/e:0)+' con envío)',
+         'La UT/OCT llega al 100 % cuando todos los servicios del padrón, y los que enviaron con un CUI fuera del padrón, tienen un envío vigente. Considera toda la UT/OCT, aunque haya un comité o servicio elegido.']; }
   const tiles = [
     ['Servicios con envío vigente', nf0.format(enPad.size), 'de '+nf0.format(padTot)+(nFuera?', con '+nFuera+' fuera del padrón':' del padrón')+' ('+P1(padTot?enPad.size/padTot:0)+')'],
     UT==='TODAS' ? ['Unidades territoriales', nf0.format(utsCon), 'de '+utsTot+' tienen al menos un envío'] : ['Envíos vigentes', nf0.format(L.length), 'incluye los CUI que no están en el padrón'],
+    t100,
     ['Niñas y niños', nf0.format(nin), 'de 6 a 36 meses, según el pedido no perecible'],
     ['Actores comunales', nf0.format(ac), 'madres cuidadoras, madres guía y socias de cocina'],
     ['Costo del menú', S0(cost), P1(pres?cost/pres:0)+' del presupuesto calculado ('+S0(pres)+')'],
@@ -205,7 +218,8 @@ function coberturaNut(){
 }
 
 // -------- avance (nacional)
-function avance(){
+// avance por UT/OCT (todas, sin filtros): servicios con envío vigente, esperados y fecha en que llegó al 100 %
+function filasAvance(){
   // los servicios con un CUI que no está en el padrón cuentan como enviados y se suman a los esperados de su UT/OCT
   const env = {}, fu = {}; D.sa.forEach(s=>{ (env[s.ut]=env[s.ut]||new Set()).add(s.cuiPad||s.cui); if(!s.padron) fu[s.ut]=(fu[s.ut]||0)+1; });
   const rows = Object.keys(env).map(u=>({u, n:env[u].size, f:fu[u]||0, e:(D.padUT[u]||0)+(fu[u]||0)}));
@@ -221,6 +235,10 @@ function avance(){
       r.f100 = L[k][0]; r.ult = L[k][1]; });
   }
   rows.sort((a,b)=>b.n/b.e-a.n/a.e || (a.f100&&b.f100 ? (a.f100<b.f100?-1:a.f100>b.f100?1:0) : 0));
+  return {env, rows, conFecha};
+}
+function avance(){
+  const {env, rows, conFecha} = filasAvance();
   const f100 = r => r.f100 ? '<td class="f100" data-tip="'+esc('Llegó al 100 % con el envío de '+r.ult+' ('+r.f100.slice(8,10)+'/'+r.f100.slice(5,7)+'/'+r.f100.slice(0,4)+' '+r.f100.slice(11,16)+' h)')+'">'+r.f100.slice(8,10)+'/'+r.f100.slice(5,7)+'<span class="hh">'+r.f100.slice(11,16)+' h</span></td>'
                         : '<td style="color:var(--muted)">—</td>';
   const tn = sum(rows.map(r=>r.n)), tf = sum(rows.map(r=>r.f));

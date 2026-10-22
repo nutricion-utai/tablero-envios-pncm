@@ -237,14 +237,28 @@ function filasAvance(){
   rows.sort((a,b)=>b.n/b.e-a.n/a.e || (a.f100&&b.f100 ? (a.f100<b.f100?-1:a.f100>b.f100?1:0) : 0));
   return {env, rows, conFecha};
 }
+// orden de la tabla de avance: por defecto, % de avance de mayor a menor (a igual %, la que llegó antes al 100 %)
+let avK = 'p', avD = -1;
+const AV_COLS = [['u','UT/OCT',0],['e','Esperados',1],['n','Enviaron',1],['p','Avance',0],['f100','Llegó al 100 %',0]];
+function ordenAvance(rows){
+  const pc = r => r.e ? r.n/r.e : 0;
+  const base = (a,b)=> pc(b)-pc(a) || (a.f100&&b.f100 ? (a.f100<b.f100?-1:a.f100>b.f100?1:0) : 0) || a.u.localeCompare(b.u,'es');
+  const val = {u:r=>r.u, e:r=>r.e, n:r=>r.n, p:pc, f100:r=>r.f100||null}[avK];
+  return rows.slice().sort((a,b)=>{
+    const x = val(a), y = val(b);
+    if (avK==='f100' && (x==null || y==null)) return x==null && y==null ? base(a,b) : x==null ? 1 : -1;   // las que no llegan al 100 %, siempre al final
+    const c = avK==='u' ? x.localeCompare(y,'es') : (x>y?1:x<y?-1:0);
+    return c ? c*avD : base(a,b);
+  });
+}
 function avance(){
-  const {env, rows, conFecha} = filasAvance();
+  const AV = filasAvance(), {env, conFecha} = AV, rows = ordenAvance(AV.rows);
   const f100 = r => r.f100 ? '<td class="f100" data-tip="'+esc('Llegó al 100 % con el envío de '+r.ult+' ('+r.f100.slice(8,10)+'/'+r.f100.slice(5,7)+'/'+r.f100.slice(0,4)+' '+r.f100.slice(11,16)+' h)')+'">'+r.f100.slice(8,10)+'/'+r.f100.slice(5,7)+'<span class="hh">'+r.f100.slice(11,16)+' h</span></td>'
                         : '<td style="color:var(--muted)">—</td>';
   const tn = sum(rows.map(r=>r.n)), tf = sum(rows.map(r=>r.f));
-  $('#avLede').textContent = 'Servicios alimentarios que ya tienen un envío vigente para '+mesTxt(D.periodo).replace(/ \d{4}$/,'')+'. Un envío vigente es el último que mandó cada servicio, identificado por su CUI del padrón; los anteriores quedan reemplazados. Los que enviaron con un CUI que no está en el padrón también se cuentan y se suman a los esperados de su UT/OCT.'+(D.envs?' «Llegó al 100 %» es la fecha y hora del primer envío del último servicio que faltaba.':'');
+  $('#avLede').textContent = 'Servicios alimentarios que ya tienen un envío vigente para '+mesTxt(D.periodo).replace(/ \d{4}$/,'')+'. Un envío vigente es el último que mandó cada servicio, identificado por su CUI del padrón; los anteriores quedan reemplazados. Los que enviaron con un CUI que no está en el padrón también se cuentan y se suman a los esperados de su UT/OCT.'+(D.envs?' «Llegó al 100 %» es la fecha y hora del primer envío del último servicio que faltaba.':'')+' Toque un encabezado para ordenar.';
   $('#avNote').textContent = tn + ' servicios alimentarios con envío vigente'+(tf?' ('+tf+' con CUI fuera del padrón)':'')+', en ' + rows.length + ' unidades territoriales.';
-  $('#tAv').innerHTML = '<thead><tr><th>UT/OCT</th><th class="n">Esperados</th><th class="n">Enviaron</th><th>Avance</th>'+(conFecha?'<th class="f100">Llegó al 100 %</th>':'')+'</tr></thead><tbody>'+
+  $('#tAv').innerHTML = '<thead><tr>'+AV_COLS.filter(c=>c[0]!=='f100'||conFecha).map(c=>'<th class="sort'+(c[2]?' n':'')+(c[0]==='f100'?' f100':'')+'" tabindex="0" data-ak="'+c[0]+'" aria-sort="'+(avK===c[0]?(avD>0?'ascending':'descending'):'none')+'" title="Ordenar por '+c[1].toLowerCase()+'">'+c[1]+(avK===c[0]?(avD>0?' ↑':' ↓'):'')+'</th>').join('')+'</tr></thead><tbody>'+
     rows.map(r=>'<tr'+(UT===r.u?' style="background:var(--azul-soft)"':'')+'><td><a href="#" class="salink" data-ut="'+esc(UT===r.u?'TODAS':r.u)+'" title="'+(UT===r.u?'Quitar el filtro de UT':'Filtrar por '+esc(r.u))+'">'+esc(r.u)+'</a>'+(UT===r.u?' <span class="chip blue" style="margin-left:4px">filtro activo</span>':'')+'</td><td class="n">'+r.e+(r.f?'<span style="display:block;font-size:11.5px;color:var(--muted)">incluye '+r.f+' fuera del padrón</span>':'')+'</td><td class="n">'+r.n+'</td><td><div class="avc"><div class="minibar"><span style="width:'+(r.e?Math.min(100,r.n/r.e*100):0)+'%"></span></div><span>'+nf0.format(r.e?r.n/r.e*100:0)+' %</span></div></td>'+(conFecha?f100(r):'')+'</tr>').join('')+'</tbody>';
   const sin = Object.keys(D.padUT).filter(u=>!env[u]).sort();
   $('#sinEnv').innerHTML = '<b>Todavía sin envíos ('+sin.length+'):</b> '+sin.map(esc).join(', ')+'.';
@@ -621,6 +635,13 @@ $('#tSA').addEventListener('click', e=>{
   const tu = e.target.closest('tr[data-ut]'); if(tu){ $('#q').value=''; fijarFiltro(tu.dataset.ut, '', ''); $('#detalle').scrollIntoView({behavior:'smooth', block:'start'}); return; }
   const tr = e.target.closest('tr[data-cui]'); if(tr){ openCui = openCui===tr.dataset.cui?null:tr.dataset.cui; detalle(); if(openCui) $('#drawer').scrollIntoView({behavior:'smooth',block:'nearest'}); }
 });
+$('#tAv').addEventListener('click', e=>{
+  const th = e.target.closest('th[data-ak]'); if (!th) return;
+  const k = th.dataset.ak;
+  if (avK===k) avD = -avD; else { avK = k; avD = (k==='u'||k==='f100') ? 1 : -1; }   // nombre y fecha empiezan de menor a mayor; las cifras, de mayor a menor
+  avance();
+});
+$('#tAv').addEventListener('keydown', e=>{ if(e.key==='Enter'||e.key===' '){ const th=e.target.closest('th[data-ak]'); if(th){ e.preventDefault(); th.click(); } } });
 $('#tSA').addEventListener('keydown', e=>{ if(e.key==='Enter'){ const th=e.target.closest('th'); if(th) th.click(); }});
 function drawer(){
   const s = openCui && byCui[openCui];

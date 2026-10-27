@@ -208,7 +208,7 @@ function coberturaNut(){
   tarj.splice(2, 0, (()=>{
     // proteínas en % de las kcal: rango de referencia RIEN para 1 a 3 años (10 a 20 %); en 6 a 11 meses es referencial
     const pm = gs => { const n=sum(gs.map(g=>M[g].n)); return n ? sum(gs.map(g=>M[g].suma))/n : null; };
-    const v = pm([2,3]), [lo,hi] = MAC_RANGO[0], fuera = v!=null && (Math.round(v)<lo || Math.round(v)>hi);
+    const v = pm([2,3]), [lo,hi] = rMac(0,2), fuera = v!=null && (Math.round(v)<lo || Math.round(v)>hi);
     const grp = [0,1,2,3].filter(g=>M[g].n).map(g=>'<span>'+GRC[g]+' <b>'+pf(pm([g]))+'</b>'+(g<2?' <span class="dir">ref.</span>':'')+'</span>').join('');
     const tipM = 'Promedio del porcentaje de las calorías del día que viene de las proteínas (factores 4-9-4), en los días con menú y los grupos de edad con usuarios. La cifra grande corresponde a 12 a 36 meses, frente al rango aceptable de distribución de macronutrientes para 1 a 3 años de las Recomendaciones de Ingesta de Energía y Nutrientes (RIEN) de Colombia (10 a 20 %). En 6 a 8 y 9 a 11 meses es referencial.';
     return '<div class="kpi" data-tip="'+esc(tipM)+'">'+labI('% kcal de proteínas')+'<span class="val">'+pf(v)+'</span>'+
@@ -829,15 +829,23 @@ const valorNut = (t,j) => j===0 ? Math.round(t[0]) : t[j];
 const pctNut = (t,j,gi) => Math.round(valorNut(t,j) / D.req[GRP[gi]][j] * 100);   // porcentaje entero
 const cumple = (pInt,j) => pInt >= Math.round(D.metaPNCM[j]*100);
 // Distribución de las calorías por macronutriente (% de la energía de proteínas, grasas y carbohidratos, factores 4-9-4).
-// Rango de referencia para 12 a 36 meses: rango aceptable de distribución de macronutrientes (AMDR) para 1 a 3 años de las
-// Recomendaciones de Ingesta de Energía y Nutrientes (RIEN) de Colombia, Resolución 3803 de 2016 del Ministerio de Salud y Protección Social.
-// En 6 a 11 meses no se evalúa: la leche materna aporta buena parte de la grasa del día.
+// Rangos de referencia por grupo de edad (no hay norma peruana que fije esta distribución):
+// - 12 a 23 meses: rango aceptable de distribución de macronutrientes (AMDR) para 1 a 3 años de las Recomendaciones de Ingesta de
+//   Energía y Nutrientes (RIEN) de Colombia, Resolución 3803 de 2016 del Ministerio de Salud y Protección Social (Tabla 1):
+//   proteínas 10-20 %, grasas 30-40 %, carbohidratos 50-65 %.
+// - 24 a 36 meses: proteínas y carbohidratos de la RIEN; grasas 25-35 % de la consulta de expertos FAO/OMS "Fats and fatty acids
+//   in human nutrition" (2010), recomendación para 2 a 18 años.
+// En 6 a 11 meses no se evalúa: la leche materna aporta buena parte de la grasa del día (se muestra como referencia el de 12 a 23 meses).
 const MAC = ['Proteínas','Grasas','Carbohidratos'];
-const MAC_RANGO = [[10,20],[25,35],[50,65]];
+const MAC_RANGO_G = {2:[[10,20],[30,40],[50,65]], 3:[[10,20],[25,35],[50,65]]};
+const rMac = (i,gi) => MAC_RANGO_G[gi===3?3:2][i];                       // rango [mín, máx] del macronutriente i para el grupo gi
+const fMac = (i,gi) => (i===1 && gi===3) ? 'FAO/OMS 2010, 2 a 18 años' : 'RIEN Colombia, 1 a 3 años';   // fuente del rango
+const rMacIgual = i => rMac(i,2)[0]===rMac(i,3)[0] && rMac(i,2)[1]===rMac(i,3)[1];
+const rTxt = (i,gi) => rMac(i,gi)[0]+' a '+rMac(i,gi)[1]+' %';
 const evaluaMac = gi => gi>=2;
 function distMacRaw(t){ const e = 4*t[1] + 9*t[6] + 4*t[7]; if(!e) return null; return [4*t[1]/e*100, 9*t[6]/e*100, 4*t[7]/e*100]; }
 function distMac(t){ const r = distMacRaw(t); return r ? r.map(v=>Math.round(v)) : null; }
-const enRango = (p,i) => p>=MAC_RANGO[i][0] && p<=MAC_RANGO[i][1];
+const enRango = (p,i,gi) => p>=rMac(i,gi)[0] && p<=rMac(i,gi)[1];
 function keyCelda(k,cod){ return cod==null ? null : LET[k]+cod; }
 
 function bloqueAporte(s, fechas, aten, cell, uno, IX, foF){
@@ -867,8 +875,8 @@ function bloqueAporte(s, fechas, aten, cell, uno, IX, foF){
     rowP('CALORÍAS',0)+rowP('PROTEÍNAS',1)+rowP('ZINC',3)+rowP('HIERRO',2)+rowP('CALCIO',4)+
     secRow('DISTRIBUCIÓN DE LAS CALORÍAS POR MACRONUTRIENTE')+
     MAC.map((lab,i)=>'<tr><th class="rl">'+lab.toUpperCase()+'</th><th class="ru">% de kcal</th>'+res.map(d=> d? d.map((t,k)=>{ if(!t) return '<td></td>'; const ds=distMac(t); if(!ds) return '<td></td>'; const p=ds[i];
-      if(!evaluaMac(k)) return '<td class="refc" data-tip="'+esc('Referencial en este grupo de edad · rango para 12 a 36 meses: '+MAC_RANGO[i][0]+' a '+MAC_RANGO[i][1]+' %')+'">'+p+' %</td>';
-      return '<td class="'+(enRango(p,i)?'okc':'wrc')+'" data-tip="'+esc('Rango de referencia (RIEN Colombia, 1 a 3 años): '+MAC_RANGO[i][0]+' a '+MAC_RANGO[i][1]+' % de las calorías')+'">'+p+' %</td>'; }).join('') : '<td class="sa" colspan="4">-</td>').join('')+'</tr>').join('')+
+      if(!evaluaMac(k)) return '<td class="refc" data-tip="'+esc('Referencial en este grupo de edad · rango para 12 a 23 meses: '+rTxt(i,2))+'">'+p+' %</td>';
+      return '<td class="'+(enRango(p,i,k)?'okc':'wrc')+'" data-tip="'+esc('Rango de referencia para '+GRC[k]+' ('+fMac(i,k)+'): '+rTxt(i,k)+' de las calorías')+'">'+p+' %</td>'; }).join('') : '<td class="sa" colspan="4">-</td>').join('')+'</tr>').join('')+
     '</tbody>';
   return h;
 }
@@ -950,7 +958,11 @@ const NUTL = ['Energía','Proteínas','Hierro','Zinc','Calcio'];
 const apCache = {};
 function evaluarAporte(s){
   if (apCache[s.cui]) return apCache[s.cui];
-  if (s.ap) return apCache[s.cui] = Armar.expandirAporte(s.ap);   // calculado al publicar, con las mismas reglas
+  if (s.ap){ const R = Armar.expandirAporte(s.ap);   // calculado al publicar, con las mismas reglas
+    // los días fuera de rango se vuelven a contar aquí con los rangos por grupo de edad (no dependen de los que usó Motor.gs al publicar)
+    R.mac.forEach((M,gi)=>{ M.fuera=[0,0,0]; M.diasFuera=0; if(!evaluaMac(gi)) return;
+      M.vals.forEach(v=>{ let fu=false; [0,1,2].forEach(i=>{ if(!enRango(Math.round(v.p[i]),i,gi)){ M.fuera[i]++; fu=true; } }); if(fu) M.diasFuera++; }); });
+    return apCache[s.cui] = R; }
   const rows = D.menuW[s.cui]||[]; const dias = {};
   rows.forEach(([f,sm,k,cod])=>{ (dias[f]=dias[f]||{s:sm,c:{}}).c[k]=cod; });
   const res = {dias:0, malos:[], porNut:[0,0,0,0,0], grupos:[0,0,0,0], mac:[0,1,2,3].map(()=>({n:0, suma:[0,0,0], fuera:[0,0,0], diasFuera:0, vals:[]})), cob:[0,1,2,3].map(()=>({n:0, suma:[0,0,0,0,0]})), cobDias:[[],[],[],[]]};
@@ -962,7 +974,7 @@ function evaluarAporte(s){
       const t=[0,0,0,0,0,0,0,0];
       keys.forEach(key=>{ if(!key) return; const a=aporteReceta(s.cui,key,gi); if(a) for(let j=0;j<8;j++) t[j]+=a[j]; });
       const ds = distMac(t);
-      if (ds){ const M = res.mac[gi]; M.n++; M.vals.push({p:distMacRaw(t), f, s:d.s, cui:s.cui}); let fuera=false; ds.forEach((p,i)=>{ M.suma[i]+=p; if(evaluaMac(gi) && !enRango(p,i)){ M.fuera[i]++; fuera=true; } }); if(fuera) M.diasFuera++; }
+      if (ds){ const M = res.mac[gi]; M.n++; M.vals.push({p:distMacRaw(t), f, s:d.s, cui:s.cui}); let fuera=false; ds.forEach((p,i)=>{ M.suma[i]+=p; if(evaluaMac(gi) && !enRango(p,i,gi)){ M.fuera[i]++; fuera=true; } }); if(fuera) M.diasFuera++; }
       // orden de t: energía, proteínas, hierro, zinc, calcio (igual que D.req y D.metaPNCM)
       // cobertura del requerimiento: % sin redondear (las calorías del día sí se redondean a entero, como en la hoja MENU); solo días con aporte
       if (t[0] > 0){ const C = res.cob[gi]; C.n++; for(let j=0;j<5;j++) C.suma[j] += valorNut(t,j) / D.req[GRP[gi]][j] * 100;
@@ -1244,11 +1256,11 @@ function resumenMacro(){
   // servicios y días de un grupo que cumplen una condición (para abrir la lista desde los conteos)
   const itMac = (gi, test) => L.map(s=>({s, dias: evaluarAporte(s).mac[gi].vals.filter(test).map(v=>({f:v.f, s:v.s}))}));
   L.forEach(s=>{ const r=evaluarAporte(s); r.mac.forEach((M,gi)=>{ if(!M.n) return; const o=G[gi]; o.n+=M.n; o.sa++; if(M.diasFuera) o.saFuera++; o.diasFuera+=M.diasFuera; for(let i=0;i<3;i++){ o.suma[i]+=M.suma[i]; o.fuera[i]+=M.fuera[i]; } }); });
-  $('#tMac').innerHTML = '<thead><tr><th>Grupo de edad</th><th class="n">Días evaluados</th>'+MAC.map((m,i)=>'<th class="n">'+m+'<br><span style="font-weight:500;text-transform:none">rango '+MAC_RANGO[i][0]+' a '+MAC_RANGO[i][1]+' %</span></th>').join('')+'<th class="n">Días fuera de rango</th><th class="n">Servicios con días fuera de rango</th></tr></thead><tbody>'+
+  $('#tMac').innerHTML = '<thead><tr><th>Grupo de edad</th><th class="n">Días evaluados</th>'+MAC.map((m,i)=>'<th class="n">'+m+'<br><span style="font-weight:500;text-transform:none">'+(rMacIgual(i) ? 'rango '+rTxt(i,2) : 'rango según la edad')+'</span></th>').join('')+'<th class="n">Días fuera de rango</th><th class="n">Servicios con días fuera de rango</th></tr></thead><tbody>'+
     G.map((o,gi)=>{ if(!o.n) return ''; const ev=evaluaMac(gi);
-      return '<tr><td>'+GRP[gi]+(ev?'':' <span class="chip blue" data-tip="La leche materna aporta buena parte de la grasa del día; el rango de referencia es para 1 a 3 años">referencial</span>')+'</td><td class="n">'+nf0.format(o.n)+'</td>'+
-        o.suma.map((v,i)=>{ const p=Math.round(v/o.n); return '<td class="n">'+p+' %'+(ev&&o.fuera[i]?'<br><span class="wl">'+lnkLista(MAC[i]+' fuera del rango ('+MAC_RANGO[i][0]+' a '+MAC_RANGO[i][1]+' % de las calorías) · '+GRP[gi], itMac(gi,v=>!enRango(Math.round(v.p[i]),i)), o.fuera[i]+(o.fuera[i]===1?' día fuera':' días fuera'))+'</span>':'')+'</td>'; }).join('')+
-        (()=>{ if(!ev) return '<td class="n">—</td><td class="n">—</td>'; const it=itMac(gi,v=>[0,1,2].some(i=>!enRango(Math.round(v.p[i]),i))), tit='Días con algún macronutriente fuera del rango de referencia · '+GRP[gi];
+      return '<tr><td>'+GRP[gi]+(ev?'':' <span class="chip blue" data-tip="La leche materna aporta buena parte de la grasa del día; los rangos de referencia son para 12 a 36 meses">referencial</span>')+'</td><td class="n">'+nf0.format(o.n)+'</td>'+
+        o.suma.map((v,i)=>{ const p=Math.round(v/o.n); return '<td class="n">'+p+' %'+(ev&&!rMacIgual(i)?'<br><span style="font-size:12px;color:var(--muted)" data-tip="'+esc(fMac(i,gi))+'">rango '+rTxt(i,gi)+'</span>':'')+(ev&&o.fuera[i]?'<br><span class="wl">'+lnkLista(MAC[i]+' fuera del rango ('+rTxt(i,gi)+' de las calorías) · '+GRP[gi], itMac(gi,v=>!enRango(Math.round(v.p[i]),i,gi)), o.fuera[i]+(o.fuera[i]===1?' día fuera':' días fuera'))+'</span>':'')+'</td>'; }).join('')+
+        (()=>{ if(!ev) return '<td class="n">—</td><td class="n">—</td>'; const it=itMac(gi,v=>[0,1,2].some(i=>!enRango(Math.round(v.p[i]),i,gi))), tit='Días con algún macronutriente fuera del rango de referencia · '+GRP[gi];
           return '<td class="n">'+(o.diasFuera? lnkLista(tit,it,nf0.format(o.diasFuera))+' ('+nf0.format(o.diasFuera/o.n*100)+' %)' : '—')+'</td><td class="n">'+(o.saFuera? lnkLista(tit,it,o.saFuera+' de '+o.sa) : '0 de '+o.sa)+'</td></tr>'; })(); }).join('')+'</tbody>';
 }
 // -------- gráfico: distribución del % de calorías de un macronutriente (caja y puntos por grupo de edad)
@@ -1264,18 +1276,19 @@ function graficoMacro(){
   // filas: {lab, sub, vals[], ev (se evalúa contra el rango), tipo}
   const L = sel(); let rows;
   if (!porUT){
-    rows = [0,1,2,3].map(gi=>({lab:GRC[gi], full:GRP[gi], vals:[], ev:evaluaMac(gi)}));
-    L.forEach(s=> evaluarAporte(s).mac.forEach((M,gi)=> M.vals.forEach(v=> rows[gi].vals.push(v.p[macSel]))));
+    rows = [0,1,2,3].map(gi=>({lab:GRC[gi], full:GRP[gi], vals:[], gs:[], src:[], ev:evaluaMac(gi), gi}));
+    L.forEach(s=> evaluarAporte(s).mac.forEach((M,gi)=> M.vals.forEach(v=>{ rows[gi].vals.push(v.p[macSel]); rows[gi].gs.push(gi); rows[gi].src.push([s, v.f]); })));
   } else {
     const m = {};
-    L.forEach(s=>{ const k = tot ? s.ut : s.cui; const o = m[k] || (m[k] = {lab: tot ? s.ut : s.sa, full: tot ? s.ut : s.sa+' (CUI '+s.cui+')', vals:[], ev:true, n:0, k});
-      let t=false; [2,3].forEach(gi=> evaluarAporte(s).mac[gi].vals.forEach(v=>{ o.vals.push(v.p[macSel]); t=true; })); if(t) o.n++; });
+    L.forEach(s=>{ const k = tot ? s.ut : s.cui; const o = m[k] || (m[k] = {lab: tot ? s.ut : s.sa, full: tot ? s.ut : s.sa+' (CUI '+s.cui+')', vals:[], gs:[], src:[], ev:true, n:0, k});
+      let t=false; [2,3].forEach(gi=> evaluarAporte(s).mac[gi].vals.forEach(v=>{ o.vals.push(v.p[macSel]); o.gs.push(gi); o.src.push([s, v.f, gi]); t=true; })); if(t) o.n++; });
     rows = Object.values(m).filter(o=>o.vals.length).map(o=>Object.assign(o,{md: cuantil([...o.vals].sort((a,b)=>a-b), .5)}))
       .sort((a,b)=> b.md - a.md || a.lab.localeCompare(b.lab,'es'));
   }
   if (!rows.some(r=>r.vals.length)){ el.innerHTML='<p class="note">Sin datos para esta selección.</p>'; return; }
-  const [r0,r1] = MAC_RANGO[macSel];
-  const all = rows.flatMap(r=>r.vals); let lo = Math.min(r0, ...all), hi = Math.max(r1, ...all);
+  // rango por grupo de edad: en grasas difiere entre 12 a 23 y 24 a 36 meses
+  const R2 = rMac(macSel,2), R3 = rMac(macSel,3), igual = rMacIgual(macSel);
+  const all = rows.flatMap(r=>r.vals); let lo = Math.min(R2[0], R3[0], ...all), hi = Math.max(R2[1], R3[1], ...all);
   lo = Math.max(0, Math.floor((lo-2)/5)*5); hi = Math.min(100, Math.ceil((hi+2)/5)*5);
   const N = rows.length, W = Math.max(320, el.clientWidth || 680);
   const LW = porUT ? (W<520 ? 118 : 210) : (W<520 ? 92 : 150);
@@ -1284,8 +1297,15 @@ function graficoMacro(){
   const paso = ((hi-lo) > 40 || W < 520) ? 10 : 5;
   const corta = (t,n) => t.length > n ? t.slice(0,n-1)+'…' : t;
   let g = '';
-  g += '<rect x="'+x(r0)+'" y="'+(TOP-6)+'" width="'+(x(r1)-x(r0))+'" height="'+(RH*N+6)+'" fill="var(--ok-soft)"/>';
-  g += '<text x="'+((x(r0)+x(r1))/2)+'" y="'+(TOP-10)+'" text-anchor="middle" style="fill:var(--ok);font-size:11.5px;font-weight:600">Rango 12 a 36 m (RIEN Colombia): '+r0+' a '+r1+' %</text>';
+  const banda = (R, y0, h, op) => '<rect x="'+x(R[0])+'" y="'+y0+'" width="'+(x(R[1])-x(R[0]))+'" height="'+h+'" fill="var(--ok-soft)"'+(op?' fill-opacity="'+op+'"':'')+'/>';
+  if (igual) g += banda(R2, TOP-6, RH*N+6);
+  else if (porUT) g += banda(R2, TOP-6, RH*N+6, .6) + banda(R3, TOP-6, RH*N+6, .6);   // 12 a 36 meses juntos: las dos bandas (más intensa donde se superponen)
+  else rows.forEach((row,ri)=>{ g += banda(row.gi===3 ? R3 : R2, TOP + RH*ri + (ri?0:-6), RH + (ri?0:6)); });   // una banda por grupo de edad
+  const etq = igual ? 'Rango 12 a 36 m (RIEN Colombia): '+R2[0]+' a '+R2[1]+' %'
+    : W<520 ? '12-23 m: '+R2[0]+' a '+R2[1]+' % · 24-36 m: '+R3[0]+' a '+R3[1]+' %'
+    : 'Rango 12-23 m: '+R2[0]+' a '+R2[1]+' % (RIEN Colombia) · 24-36 m: '+R3[0]+' a '+R3[1]+' % (FAO/OMS 2010)';
+  const xe = igual ? (x(R2[0])+x(R2[1]))/2 : (LW + W - RW)/2;
+  g += '<text x="'+xe+'" y="'+(TOP-10)+'" text-anchor="middle" style="fill:var(--ok);font-size:11.5px;font-weight:600">'+etq+'</text>';
   for (let t=lo; t<=hi; t+=paso) g += '<line class="ax" x1="'+x(t)+'" x2="'+x(t)+'" y1="'+(TOP-6)+'" y2="'+(TOP+RH*N)+'"/><text x="'+x(t)+'" y="'+(TOP+RH*N+16)+'" text-anchor="middle">'+t+' %</text>';
   const hb = porUT ? 9 : 11;   // media altura de la caja
   rows.forEach((row,ri)=>{
@@ -1296,7 +1316,7 @@ function graficoMacro(){
          '<text x="0" y="'+(yc+12)+'" style="font-size:11px">'+(a.length? nf0.format(a.length)+(porUT?' menús diarios':' días')+(porUT && tot ? ' · '+row.n+' serv.' : '')+(row.ev?'':' · ref.') : 'sin usuarios')+'</text>';
     if (!a.length) return;
     const s = [...a].sort((p,q)=>p-q), q1=cuantil(s,.25), md=cuantil(s,.5), q3=cuantil(s,.75), mn=s[0], mx=s[s.length-1], av=sum(s)/s.length;
-    const fuera = row.ev ? s.filter(v=>Math.round(v)<r0||Math.round(v)>r1).length : null;   // mismo criterio que la tabla: porcentaje entero
+    const fuera = row.ev ? a.filter((v,j)=>!enRango(Math.round(v),macSel,row.gs[j])).length : null;   // mismo criterio que la tabla: porcentaje entero, con el rango del grupo de edad de cada día
     const op = s.length > 300 ? .16 : s.length > 60 ? .28 : .45;
     s.forEach((v,i)=>{ const jy = ((i*37)%23)/23 - .5; g += '<circle cx="'+x(v)+'" cy="'+(yc + jy*RH*0.5)+'" r="2.4" fill="var(--azul)" fill-opacity="'+op+'"/>'; });
     g += '<line x1="'+x(mn)+'" x2="'+x(q1)+'" y1="'+yc+'" y2="'+yc+'" stroke="var(--ink2)" stroke-width="1.5"/><line x1="'+x(q3)+'" x2="'+x(mx)+'" y1="'+yc+'" y2="'+yc+'" stroke="var(--ink2)" stroke-width="1.5"/>'+
@@ -1304,18 +1324,28 @@ function graficoMacro(){
          '<rect x="'+x(q1)+'" y="'+(yc-hb)+'" width="'+Math.max(2,x(q3)-x(q1))+'" height="'+(hb*2)+'" rx="4" fill="var(--azul-soft)" fill-opacity=".85" stroke="var(--azul)" stroke-width="1.5"/>'+
          '<line x1="'+x(md)+'" x2="'+x(md)+'" y1="'+(yc-hb)+'" y2="'+(yc+hb)+'" stroke="var(--ink)" stroke-width="2.5"/>'+
          '<circle cx="'+x(av)+'" cy="'+yc+'" r="4" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5"/>';
+    // dónde aparecen el mínimo y el máximo: UT/OCT (con todas las UT), servicio y fecha; si el valor se repite (a un decimal), cuántos más
+    const donde = obj => {
+      const ix = a.map((v,j)=>j).filter(j=>nf1.format(a[j])===nf1.format(obj));
+      const lug = ix.map(j=>{ const [sv, f, g] = row.src[j];
+        const ut = tot && !porUT ? '<b>'+esc(sv.ut)+'</b> · ' : '';
+        const nom = (porUT && !tot) ? '' : esc(sv.sa)+', ';
+        return ut + nom + ddmm(pd(f)) + (porUT && g!=null ? ' ('+GRC[g]+')' : ''); });
+      const uts = tot && !porUT ? new Set(ix.map(j=>row.src[j][0].ut)).size : 0;
+      return lug[0] + (lug.length>1 ? ' y '+(lug.length-1)+(lug.length===2?' día más':' días más')+(uts>1?' en '+uts+' UT/OCT':'') : '');
+    };
     const tip = '<b>'+esc(row.full)+'</b>'+(porUT?' · 12 a 36 meses':'')+' · '+nf0.format(s.length)+(porUT?' menús diarios (un día de un grupo de edad)':' días con menú')+(porUT && tot ? ' · '+row.n+' servicio'+(row.n===1?'':'s') : '')+
-      '<br>Mínimo '+nf1.format(mn)+' % · máximo '+nf1.format(mx)+' %<br>Cuartiles: '+nf1.format(q1)+' % · <b>mediana '+nf1.format(md)+' %</b> · '+nf1.format(q3)+' %<br>Promedio '+nf1.format(av)+' %'+
-      (fuera===null ? '<br>Referencial en este grupo de edad' : '<br>Fuera del rango '+r0+' a '+r1+' %: '+nf0.format(fuera)+(porUT?' menús':' días')+' ('+nf0.format(fuera/s.length*100)+' %)');
-    g += '<rect x="'+LW+'" y="'+(yc-RH/2)+'" width="'+(W-LW-RW)+'" height="'+RH+'" fill="transparent" data-tip="'+esc(tip)+'"/>';
+      '<br>Mínimo '+nf1.format(mn)+' %: '+donde(mn)+'<br>Máximo '+nf1.format(mx)+' %: '+donde(mx)+'<br>Cuartiles: '+nf1.format(q1)+' % · <b>mediana '+nf1.format(md)+' %</b> · '+nf1.format(q3)+' %<br>Promedio '+nf1.format(av)+' %'+
+      (fuera===null ? '<br>Referencial en este grupo de edad' : '<br>Fuera del rango '+(igual ? R2[0]+' a '+R2[1]+' %' : porUT ? 'de su grupo de edad ('+R2[0]+' a '+R2[1]+' % en 12-23 m, '+R3[0]+' a '+R3[1]+' % en 24-36 m)' : rTxt(macSel,row.gi))+': '+nf0.format(fuera)+(porUT?' menús':' días')+' ('+nf0.format(fuera/s.length*100)+' %)');
+    g += '<rect x="'+LW+'" y="'+(yc-RH/2)+'" width="'+(W-LW-RW)+'" height="'+RH+'" fill="transparent" data-tipw data-tip="'+esc(tip)+'"/>';
   });
   el.innerHTML = '<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Distribución del porcentaje de calorías de '+MAC[macSel].toLowerCase()+' '+(porUT?'por '+(tot?'UT/OCT':'servicio alimentario'):'por grupo de edad')+'">'+g+'</svg>';
   $('#nMacG').textContent = porUT
-    ? 'Cada punto es el menú de un día para un grupo de edad (12 a 23 o 24 a 36 meses) de un servicio alimentario; un servicio con 19 días y los dos grupos suma 38 menús diarios. Las filas se ordenan por la mediana, de mayor a menor. Las líneas laterales llegan al valor mínimo y al máximo. El rango de referencia es el de 1 a 3 años de la RIEN de Colombia. Toque una fila para ver sus cifras.'
-    : 'Cada punto es un día con menú de un servicio alimentario para ese grupo de edad. Las líneas laterales llegan al valor mínimo y al máximo. El rango de referencia es el de 1 a 3 años de la RIEN de Colombia; en 6 a 8 y 9 a 11 meses los valores son referenciales. Toque una fila para ver sus cifras.';
+    ? 'Cada punto es el menú de un día para un grupo de edad (12 a 23 o 24 a 36 meses) de un servicio alimentario; un servicio con 19 días y los dos grupos suma 38 menús diarios. Las filas se ordenan por la mediana, de mayor a menor. Las líneas laterales llegan al valor mínimo y al máximo. '+(igual ? 'El rango de referencia es el de 1 a 3 años de la RIEN de Colombia.' : 'Las bandas son los rangos de referencia de 12 a 23 meses (RIEN de Colombia) y de 24 a 36 meses (FAO/OMS 2010); cada día se compara con el de su grupo de edad.')+' Toque una fila para ver sus cifras.'
+    : 'Cada punto es un día con menú de un servicio alimentario para ese grupo de edad. Las líneas laterales llegan al valor mínimo y al máximo. '+(igual ? 'El rango de referencia es el de 1 a 3 años de la RIEN de Colombia' : 'La banda de cada fila es su rango de referencia: 12 a 23 meses, RIEN de Colombia; 24 a 36 meses, FAO/OMS 2010')+'; en 6 a 8 y 9 a 11 meses los valores son referenciales. Toque una fila para ver sus cifras.';
 }
 // -------- alertas técnicas de distribución de calorías (12 a 36 meses): proteínas bajo el rango y grasas sobre el rango.
-// Criterio técnico con el rango de la RIEN de Colombia; no está establecido en la Directiva del SCD.
+// Criterio técnico con el rango de proteínas de la RIEN de Colombia; no está establecido en la Directiva del SCD.
 // enlace a uno o varios días señalados: lleva al menú del primer día y deja una barra para recorrer los demás
 function lnkDias(s, dias, mot, txt, cls){
   dias = dias.slice().sort((a,b)=>a.f<b.f?-1:1);
@@ -1332,7 +1362,7 @@ function tablaUT(L, fila, cab){
 function okTabla(id, msg){ const ok=$('#'+id+'Ok'), w=$('#'+id+'Wrap'); ok.hidden=!msg; w.hidden=!!msg; if(msg) ok.innerHTML='<span class="okic" aria-hidden="true">✓</span><span>'+msg+'</span>'; }
 function alertasMacro(){
   // solo proteínas: días en que menos del 10 % de las calorías viene de proteínas (las grasas fuera de rango se ven en el menú semanal)
-  const pMin = MAC_RANGO[0][0];
+  const pMin = rMac(0,2)[0];
   const L = sel(); const rows = [];
   L.forEach(s=>{ const r = evaluarAporte(s); const dp = {}, gr = new Set();
     [2,3].forEach(gi=> r.mac[gi].vals.forEach(v=>{ if (Math.round(v.p[0]) < pMin){ dp[v.f]=v.s; gr.add(gi); } }));
@@ -1345,11 +1375,11 @@ function alertasMacro(){
     (rows.length ? rows.length+' de '+conG+' servicios alimentarios con usuarios de 12 a 36 meses tienen al menos un día señalado.' : '');
   if(!rows.length){
     $('#tApMac').innerHTML='';
-    let nd=0, alto=0; L.forEach(s=>{ const r=evaluarAporte(s); [2,3].forEach(gi=>r.mac[gi].vals.forEach(v=>{ nd++; if(Math.round(v.p[0])>MAC_RANGO[0][1]) alto++; })); });
+    let nd=0, alto=0; L.forEach(s=>{ const r=evaluarAporte(s); [2,3].forEach(gi=>r.mac[gi].vals.forEach(v=>{ nd++; if(Math.round(v.p[0])>rMac(0,gi)[1]) alto++; })); });
     const quien = UT==='TODAS' ? 'los servicios alimentarios seleccionados' : SAF ? esc(filtroTxt()) : 'los servicios alimentarios '+esc(deSel());
     okTabla('tApMac', !conG ? 'No hay servicios alimentarios con usuarios de 12 a 36 meses en esta selección.' :
       (alto ? 'En '+quien+', ningún menú diario de 12 a 36 meses tiene menos de '+pMin+' % de sus calorías de proteínas.' :
-              'En '+quien+', todos los menús diarios de 12 a 36 meses están dentro del rango de referencia de proteínas ('+MAC_RANGO[0][0]+' a '+MAC_RANGO[0][1]+' % de las calorías).'));
+              'En '+quien+', todos los menús diarios de 12 a 36 meses están dentro del rango de referencia de proteínas ('+rTxt(0,2)+' de las calorías).'));
     return;
   }
   okTabla('tApMac', null);

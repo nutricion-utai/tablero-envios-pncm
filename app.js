@@ -531,13 +531,20 @@ function calidad(){
   // cuyo CUI fue usado por otro recupera su propio envío.
   const selCui = new Set(S.map(s=>s.cui)), fh = f=>f.slice(8,10)+'/'+f.slice(5,7)+' '+f.slice(11,16);
   const cuiMal = S.filter(s=>s.cuiSug), desc = (D.descartados||[]).filter(d=>selCui.has(d[1])), resc = S.filter(s=>s.rescatado);
-  const partes = [];
+  const partes = [], porUTe = [];   // porUTe: alertas de envío por UT/OCT {ut, t: 'cui'|'fuera', h}
+  const utDeS = s => s.ut || s.utEnv || 'Sin UT/OCT';
+  const cgTxt = s => 'CG '+esc(s.cg)+(s.ut && s.utEnv && nUT(s.ut)!==nUT(s.utEnv) ? '; registrado como '+esc(s.utEnv) : '');
+  cuiMal.forEach(s=> porUTe.push({ut:utDeS(s), t:'cui', h: saA(s)+' ('+cgTxt(s)+'): registró el CUI '+esc(s.cuiEnv)+', que '+(s.padSA?'en el padrón es '+esc(s.padSA)+(nUT(s.padUTcui)!==nUT(utDeS(s))?' ('+esc(s.padUTcui)+', CG '+esc(s.padCG)+')':' (CG '+esc(s.padCG)+')'):'no figura en el padrón')+
+    (s.cuiSug==='?' ? '; no se encontró en el padrón un servicio con este nombre y comité' : '; en el padrón este servicio tiene el CUI <b>'+s.cui+'</b>, con el que se cuenta')}));
+  desc.forEach(d=>{ const s=byCui[d[1]]; porUTe.push({ut: s?utDeS(s):'Sin UT/OCT', t:'cui', h:(s?saA(s):esc(d[2]))+': el envío del '+fh(d[3])+' llegó con el CUI '+esc(d[0])+' y después el mismo servicio envió con su CUI correcto, <b>'+d[1]+'</b>; se descarta el primero para no contarlo dos veces'}); });
+  resc.forEach(s=> porUTe.push({ut:utDeS(s), t:'cui', h: saA(s)+' (CUI '+s.cui+') envió el '+fh(s.fecha)+', pero ese envío había quedado reemplazado por el de otro servicio que usó su CUI; se recupera como su envío vigente'}));
   cuiMal.forEach(s=> partes.push(saA(s)+' (CG '+esc(s.cg)+', '+esc(s.utEnv)+'): registró el CUI '+esc(s.cuiEnv)+', que '+(s.padSA?'en el padrón es '+esc(s.padSA)+' ('+esc(s.padUTcui)+', CG '+esc(s.padCG)+')':'no figura en el padrón')+
     (s.cuiSug==='?' ? '; no se encontró en el padrón un servicio con este nombre y comité' : '; en el padrón este servicio tiene el CUI <b>'+s.cui+'</b>, con el que se cuenta')));
   desc.forEach(d=>{ const s=byCui[d[1]]; partes.push((s?saA(s):esc(d[2]))+': el envío del '+fh(d[3])+' llegó con el CUI '+esc(d[0])+' y después el mismo servicio envió con su CUI correcto, <b>'+d[1]+'</b>; se descarta el primero para no contarlo dos veces'); });
   resc.forEach(s=> partes.push(saA(s)+' (CUI '+s.cui+') envió el '+fh(s.fecha)+', pero ese envío había quedado reemplazado por el de otro servicio que usó su CUI; se recupera como su envío vigente'));
   if (partes.length) items.push([cuiMal.length+desc.length+resc.length, 'CUI que no corresponde al servicio', partes.join('; ')+'. El envío vigente, el avance y la unidad territorial se calculan con el CUI del padrón; conviene corregir el CUI en la herramienta.']);
   const fuera = S.filter(s=>!s.padron);
+  fuera.forEach(s=> porUTe.push({ut:utDeS(s), t:'fuera', h: saA(s)+' (CUI '+s.cui+', CG '+esc(s.cg)+')'}));
   if (fuera.length) items.push([fuera.length, 'CUI que no está en el padrón', fuera.map(s=>saA(s)+' (CUI '+s.cui+', '+esc(s.utEnv)+')').join('; ')+'. Se cuenta en el avance y se suma a los esperados de su UT/OCT.']);
   const enSel = new Set(S.map(s=>s.cui));
   const ded = S.filter(s=>s.ambDed);
@@ -581,7 +588,25 @@ function calidad(){
   $('#obs').innerHTML = (hayObs ? '' : okBox('Sin observaciones en '+quien+': los CUI corresponden al padrón, los proveedores y RUC coinciden con los adjudicados y ningún costo supera el presupuesto.')) + obsHTML(vis.filter(([n,h])=>n));
   const envIt = items.filter(([n,h])=>/^CUI que no corresponde|^Envíos reemplazados|^CUI que no está en el padrón/.test(h));
   const envAl = envIt.filter(([n,h])=>n && !info(h));
-  $('#obsEnv').innerHTML = (envAl.length ? '' : okBox('Sin alertas sobre '+quien+': todos los CUI corresponden al servicio en el padrón.')) + obsHTML(envIt.filter(([n,h])=>n));
+  // Alertas sobre los envíos, organizadas por UT/OCT (en orden alfabético): un bloque por UT/OCT con sus alertas por tipo y sus reenvíos
+  const TIPOS_E = [['cui','CUI que no corresponde al servicio','El envío vigente, el avance y la unidad territorial se calculan con el CUI del padrón; conviene corregir el CUI en la herramienta.'],
+                   ['fuera','CUI que no está en el padrón','Se cuenta en el avance y se suma a los esperados de su UT/OCT.']];
+  const resumenE = TIPOS_E.map(([t,tit,exp])=>{ const n = porUTe.filter(o=>o.t===t).length; if (!n) return '';
+      const nu = new Set(porUTe.filter(o=>o.t===t).map(o=>o.ut)).size;
+      return '<article><div class="num">'+n+'</div><h4>'+tit+'</h4><p>'+(UT==='TODAS' ? 'En '+nu+(nu===1?' UT/OCT':' UT/OCT')+'. ' : '')+exp+'</p></article>'; }).join('')
+    + envIt.filter(([n,h])=>n && info(h)).map(([n,h,p])=>'<article><div class="num" style="color:var(--muted)">'+n+'</div><h4>'+h+'</h4><p>'+p+'</p></article>').join('');
+  const gUT = {}; porUTe.forEach(o=>(gUT[o.ut]=gUT[o.ut]||[]).push(o));
+  const reUT = {}, envUT = {}; S.forEach(s=>{ const u=utDeS(s); reUT[u]=(reUT[u]||0)+s.reenv; envUT[u]=(envUT[u]||0)+1+s.reenv; });
+  const utsAl = Object.keys(gUT).sort((x,y)=>x.localeCompare(y,'es'));
+  const unaUT = UT!=='TODAS' || utsAl.length===1;
+  const bloque = u => { const L = gUT[u];
+    const cnt = TIPOS_E.map(([t,tit])=>{ const n=L.filter(o=>o.t===t).length; return n ? n+' '+(t==='cui' ? (n===1?'CUI que no corresponde':'CUI que no corresponden') : 'fuera del padrón') : ''; }).filter(Boolean).join(' · ');
+    const re = reUT[u] ? '<p class="utre">'+reUT[u]+' de '+envUT[u]+' envíos '+(reUT[u]===1?'fue reemplazado':'fueron reemplazados')+' por un reenvío (no afecta las cifras).</p>' : '';
+    return '<details class="utal"'+(unaUT?' open':'')+'><summary><span class="utn">'+esc(u)+'</span><span class="utc">'+cnt+'</span></summary>'+
+      TIPOS_E.map(([t,tit])=>{ const X=L.filter(o=>o.t===t); return X.length ? '<h5>'+tit+'</h5><ul>'+X.map(o=>'<li>'+o.h+'</li>').join('')+'</ul>' : ''; }).join('')+re+'</details>'; };
+  $('#obsEnv').innerHTML = (envAl.length ? '' : okBox('Sin alertas sobre '+quien+': todos los CUI corresponden al servicio en el padrón.')) + resumenE +
+    (utsAl.length ? '<div class="utals"><div class="utals-h"><h4>'+(unaUT ? 'Detalle' : 'Por UT/OCT · '+utsAl.length+' con alertas')+'</h4>'+
+      (unaUT ? '' : '<span class="utals-b"><button type="button" data-utals="1">Abrir todas</button><button type="button" data-utals="0">Cerrar todas</button></span>')+'</div>'+utsAl.map(bloque).join('')+'</div>' : '');
 }
 
 // -------- ir al detalle de un servicio desde cualquier nombre
@@ -1589,6 +1614,7 @@ async function exportarPNG(btn){
   }
 }
 botonesPNG();
+on('click', e=>{ const b = e.target.closest('[data-utals]'); if (!b) return; document.querySelectorAll('#obsEnv details.utal').forEach(d=>{ d.open = b.dataset.utals==='1'; }); });
 on('click', e=>{ const b = e.target.closest('.pngbtn'); if (b){ e.preventDefault(); exportarPNG(b); } });
 
 function render(){ titulosUT(); kpis(); coberturaNut(); avance(); porDia(); ultimos(); calidad(); ejec(); nino(); foods(); alertasAporte(); resumenCob(); resumenMacro(); graficoMacro(); alertasMacro(); prov(); detalle(); if(!$('#vMen').hidden) menuSemanal(true); }

@@ -39,14 +39,36 @@ D.sa.forEach(s => {
 const saA = s => '<a href="#detalle" class="salink" data-go="'+s.cui+'">'+esc(s.sa)+'</a>';
 const byCui = Object.fromEntries(D.sa.map(s=>[s.cui,s]));
 
-// filtros: UT/OCT, comité de gestión (CG) y servicio alimentario (SAF), en cascada: elegir un comité o un servicio fija su UT/OCT
-let UT = 'TODAS', CG = '', SAF = '';
-try { let k = localStorage.getItem('envios_ut'); if (k==='LIMA PROVINCIA') k='LIMA PROVINCIAS'; if (k) UT = k; CG = localStorage.getItem('envios_cg')||''; SAF = localStorage.getItem('envios_saf')||''; } catch(e) {}
+// Sectorización 2026 de nutrición (UTAI-CSER): UT/OCT de cada sectorista. Los nombres se comparan sin tildes ni mayúsculas.
+const SECTORES = [
+  ['le', 'Luis Enrique', ['APURIMAC','APURIMAC CT ANDAHUAYLAS','AREQUIPA','CUSCO','LIMA METROPOLITANA','LIMA METROPOLITANA CT CAÑETE','LIMA PROVINCIAS','MOQUEGUA','PASCO','PUNO','SAN MARTIN','TACNA']],
+  ['kc', 'Katherine Chamorro', ['AMAZONAS','ANCASH','ANCASH CT CHIMBOTE','AYACUCHO','CALLAO Y LIMA NORTE','HUANUCO','ICA','JUNIN','JUNIN CT LA MERCED','LA LIBERTAD','TUMBES']],
+  ['jm', 'Juan Carlos Moquillaza', ['CAJAMARCA','CAJAMARCA CT JAEN','HUANCAVELICA','LAMBAYEQUE','LORETO','LORETO CT YURIMAGUAS','MADRE DE DIOS','PIURA','UCAYALI','VRAEM']]
+];
+const nUT = u => String(u||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim();
+const SECT = Object.fromEntries(SECTORES.map(([k,n,L])=>[k, {n, set:new Set(L.map(nUT))}]));
+const secNom = () => SEC && SECT[SEC] ? SECT[SEC].n : '';
+
+// filtros: sectorista (SEC), UT/OCT, comité de gestión (CG) y servicio alimentario (SAF), en cascada: elegir un sectorista limita
+// las UT/OCT; elegir un comité o un servicio fija su UT/OCT
+let SEC = '', UT = 'TODAS', CG = '', SAF = '';
+try { SEC = localStorage.getItem('envios_sec')||''; let k = localStorage.getItem('envios_ut'); if (k==='LIMA PROVINCIA') k='LIMA PROVINCIAS'; if (k) UT = k; CG = localStorage.getItem('envios_cg')||''; SAF = localStorage.getItem('envios_saf')||''; } catch(e) {}
+if (!SECT[SEC]) SEC = '';
+const enSec = u => !SEC || SECT[SEC].set.has(nUT(u));
 const uts = [...new Set(D.sa.map(s=>s.ut))].sort();
 if (UT!=='TODAS' && !uts.includes(UT)) UT='TODAS';
-$('#fUT').innerHTML = '<option value="TODAS">Todas las UT (' + D.sa.length + ')</option>' +
-  uts.map(u => '<option value="'+esc(u)+'">'+esc(u)+' ('+D.sa.filter(s=>s.ut===u).length+')</option>').join('');
-$('#fUT').value = UT;
+// lista de UT/OCT: solo las del sectorista elegido
+function llenarUT(){
+  const L = uts.filter(enSec);
+  if (UT!=='TODAS' && !L.includes(UT)) UT = 'TODAS';
+  $('#fUT').innerHTML = '<option value="TODAS">'+(SEC ? 'Todas sus UT' : 'Todas las UT')+' (' + D.sa.filter(s=>enSec(s.ut)).length + ')</option>' +
+    L.map(u => '<option value="'+esc(u)+'">'+esc(u)+' ('+D.sa.filter(s=>s.ut===u).length+')</option>').join('');
+  $('#fUT').value = UT;
+}
+$('#fSEC').innerHTML = '<option value="">Todos los sectoristas</option>' + SECTORES.map(([k,n,L])=>{
+  const c = D.sa.filter(s=>SECT[k].set.has(nUT(s.ut))).length;
+  return '<option value="'+k+'" title="'+L.length+' UT/OCT">'+esc(n)+' ('+c+')</option>'; }).join('');
+$('#fSEC').value = SEC;
 const nCG = s => String(s||'').replace(/\s+/g,' ').trim();
 const PADF = () => D.pad || window.__PAD || [];   // padrón del periodo: [UT, CUI, servicio, comité, distrito]
 // comités de la UT/OCT (o de todas): los de los servicios con envío vigente y los del padrón del periodo
@@ -54,32 +76,38 @@ function comites(){
   const m = {};
   D.sa.forEach(s=>{ const c=nCG(s.cg), k=s.ut+'||'+c; (m[k]||(m[k]={ut:s.ut, cg:c, n:0})).n++; });
   PADF().forEach(p=>{ const c=nCG(p[3]), k=p[0]+'||'+c; if(!m[k]) m[k]={ut:p[0], cg:c, n:0}; });
-  return Object.values(m).filter(o=>o.cg && uts.includes(o.ut) && (UT==='TODAS' || o.ut===UT));
+  return Object.values(m).filter(o=>o.cg && uts.includes(o.ut) && enSec(o.ut) && (UT==='TODAS' || o.ut===UT));
 }
 function llenarFiltros(){
+  llenarUT(); $('#fSEC').value = SEC;
   const L = comites().sort((a,b)=>a.cg.localeCompare(b.cg,'es') || a.ut.localeCompare(b.ut,'es'));
   if (CG && (UT==='TODAS' || !L.some(o=>o.cg===CG))) CG = '';
   $('#fCG').innerHTML = '<option value="">Todos los comités ('+L.length+')</option>'+L.map(o=>'<option value="'+esc(o.ut+'||'+o.cg)+'">'+esc(o.cg)+(UT==='TODAS'?' · '+esc(o.ut):'')+' ('+o.n+')</option>').join('');
   $('#fCG').value = CG ? UT+'||'+CG : '';
-  const S = D.sa.filter(s=>(UT==='TODAS' || s.ut===UT) && (!CG || nCG(s.cg)===CG)).sort((a,b)=>a.sa.localeCompare(b.sa,'es'));
+  const S = D.sa.filter(s=>(UT==='TODAS' ? enSec(s.ut) : s.ut===UT) && (!CG || nCG(s.cg)===CG)).sort((a,b)=>a.sa.localeCompare(b.sa,'es'));
   if (SAF && !S.some(s=>s.cui===SAF)) SAF = '';
   $('#fSAF').innerHTML = '<option value="">Todos los servicios ('+S.length+')</option>'+S.map(s=>'<option value="'+s.cui+'">'+esc(s.sa)+(CG?'':' · CG '+esc(s.cg))+(UT==='TODAS'?' · '+esc(s.ut):'')+'</option>').join('');
   $('#fSAF').value = SAF;
-  try{ localStorage.setItem('envios_ut',UT); localStorage.setItem('envios_cg',CG); localStorage.setItem('envios_saf',SAF); }catch(_){}
+  try{ localStorage.setItem('envios_sec',SEC); localStorage.setItem('envios_ut',UT); localStorage.setItem('envios_cg',CG); localStorage.setItem('envios_saf',SAF); }catch(_){}
+  const lb = $('#fLimpiar'); if (lb) lb.disabled = !(SEC || UT!=='TODAS' || CG || SAF);
 }
 llenarFiltros();
 // fija los tres filtros y vuelve a dibujar; con un solo servicio, su ficha queda abierta en el detalle
-function fijarFiltro(ut, cg, saf){ UT = ut; CG = cg||''; SAF = saf||''; $('#fUT').value = UT; llenarFiltros(); openCui = SAF || null; render(); }
+function fijarFiltro(ut, cg, saf){ if (ut!=='TODAS' && !enSec(ut)) SEC = '';   // una UT/OCT de otro sectorista quita el filtro de sectorista
+  UT = ut; CG = cg||''; SAF = saf||''; $('#fUT').value = UT; llenarFiltros(); openCui = SAF || null; render(); }
 $('#fUT').addEventListener('change', e => fijarFiltro(e.target.value, '', ''));
+$('#fSEC').addEventListener('change', e => { SEC = e.target.value; if (UT!=='TODAS' && !enSec(UT)) fijarFiltro('TODAS', '', ''); else fijarFiltro(UT, CG, SAF); });
+// limpiar todos los filtros (el mes se mantiene)
+$('#fLimpiar').addEventListener('click', () => { SEC = ''; $('#q').value = ''; fijarFiltro('TODAS', '', ''); });
 $('#fCG').addEventListener('change', e => { const v = e.target.value; if (!v) return fijarFiltro(UT, '', ''); const i = v.indexOf('||'); fijarFiltro(v.slice(0,i), v.slice(i+2), ''); });
 $('#fSAF').addEventListener('change', e => { const s = byCui[e.target.value]; if (!s) return fijarFiltro(UT, CG, ''); fijarFiltro(s.ut, CG, s.cui); });
-const sel = () => D.sa.filter(s=>(UT==='TODAS' || s.ut===UT) && (!CG || nCG(s.cg)===CG) && (!SAF || s.cui===SAF));
+const sel = () => D.sa.filter(s=>(UT==='TODAS' ? enSec(s.ut) : s.ut===UT) && (!CG || nCG(s.cg)===CG) && (!SAF || s.cui===SAF));
 // nombre de la selección para los títulos y textos
-const filtroTxt = () => SAF ? (byCui[SAF]||{}).sa : CG ? 'el comité de gestión '+CG : UT;
+const filtroTxt = () => SAF ? (byCui[SAF]||{}).sa : CG ? 'el comité de gestión '+CG : UT==='TODAS' && SEC ? 'las UT/OCT de '+secNom() : UT;
 const deSel = () => SAF ? 'de '+(byCui[SAF]||{}).sa : CG ? 'del comité de gestión '+CG : 'de '+UT;
 // envíos (D.envs) de la selección; r[2] es el CUI del padrón
 function envFiltro(){
-  if (!CG && !SAF) return r => UT==='TODAS' || r[4]===UT;
+  if (!CG && !SAF) return r => UT==='TODAS' ? enSec(r[4]) : r[4]===UT;
   const set = new Set(sel().map(s=>s.cui));
   if (!SAF) PADF().forEach(p=>{ if (p[0]===UT && nCG(p[3])===CG) set.add(String(p[1])); });
   return r => r[4]===UT && set.has(String(r[2]));
@@ -144,8 +172,8 @@ function kpis(){
   const enPad = new Set(L.map(s=>s.cuiPad||s.cui));   // CUI del padrón (corregido si el envío trae otro) o el del envío si no está en el padrón
   const nFuera = L.filter(s=>!s.padron).length;
   const sPad = SAF ? (byCui[SAF].cuiPad||SAF) : null;
-  const padTot = (UT==='TODAS' ? D.padTotal : (CG||SAF) ? PADF().filter(p=>p[0]===UT && (!CG || nCG(p[3])===CG) && (!SAF || String(p[1])===String(sPad))).length : (D.padUT[UT]||0)) + nFuera;
-  const utsCon = new Set(D.sa.map(s=>s.ut)).size, utsTot = new Set(Object.keys(D.padUT).concat(D.sa.map(s=>s.ut))).size;
+  const padTot = (UT==='TODAS' ? (SEC ? sum(Object.keys(D.padUT).filter(enSec).map(u=>D.padUT[u])) : D.padTotal) : (CG||SAF) ? PADF().filter(p=>p[0]===UT && (!CG || nCG(p[3])===CG) && (!SAF || String(p[1])===String(sPad))).length : (D.padUT[UT]||0)) + nFuera;
+  const utsCon = new Set(D.sa.map(s=>s.ut).filter(enSec)).size, utsTot = new Set(Object.keys(D.padUT).concat(D.sa.map(s=>s.ut)).filter(enSec)).size;
   const nin = sum(L.map(s=>s.ninos)), ac = sum(L.map(s=>s.acs));
   const pres = sum(L.map(s=>s.presT)), cost = sum(L.map(s=>s.costT));
   // costo promedio por día: costo total entre niño-días (o AC-días) del conjunto, según ámbito del Anexo A
@@ -222,7 +250,7 @@ function coberturaNut(){
 function filasAvance(){
   // los servicios con un CUI que no está en el padrón cuentan como enviados y se suman a los esperados de su UT/OCT
   const env = {}, fu = {}; D.sa.forEach(s=>{ (env[s.ut]=env[s.ut]||new Set()).add(s.cuiPad||s.cui); if(!s.padron) fu[s.ut]=(fu[s.ut]||0)+1; });
-  const rows = Object.keys(env).map(u=>({u, n:env[u].size, f:fu[u]||0, e:(D.padUT[u]||0)+(fu[u]||0)}));
+  const rows = Object.keys(env).filter(enSec).map(u=>({u, n:env[u].size, f:fu[u]||0, e:(D.padUT[u]||0)+(fu[u]||0)}));
   const conFecha = !!D.envs;
   if (conFecha){
     const utDe = {}; D.sa.forEach(s=>{ utDe[s.cuiPad||s.cui] = s.ut; });
@@ -260,8 +288,8 @@ function avance(){
   $('#avNote').textContent = tn + ' servicios alimentarios con envío vigente'+(tf?' ('+tf+' con CUI fuera del padrón)':'')+', en ' + rows.length + ' unidades territoriales.';
   $('#tAv').innerHTML = '<thead><tr>'+AV_COLS.filter(c=>c[0]!=='f100'||conFecha).map(c=>'<th class="sort'+(c[2]?' n':'')+(c[0]==='f100'?' f100':'')+'" tabindex="0" data-ak="'+c[0]+'" aria-sort="'+(avK===c[0]?(avD>0?'ascending':'descending'):'none')+'" title="Ordenar por '+c[1].toLowerCase()+'">'+c[1]+(avK===c[0]?(avD>0?' ↑':' ↓'):'')+'</th>').join('')+'</tr></thead><tbody>'+
     rows.map(r=>'<tr'+(UT===r.u?' style="background:var(--azul-soft)"':'')+'><td><a href="#" class="salink" data-ut="'+esc(UT===r.u?'TODAS':r.u)+'" title="'+(UT===r.u?'Quitar el filtro de UT':'Filtrar por '+esc(r.u))+'">'+esc(r.u)+'</a>'+(UT===r.u?' <span class="chip blue" style="margin-left:4px">filtro activo</span>':'')+'</td><td class="n">'+r.e+(r.f?'<span style="display:block;font-size:11.5px;color:var(--muted)">incluye '+r.f+' fuera del padrón</span>':'')+'</td><td class="n">'+r.n+'</td><td><div class="avc"><div class="minibar"><span style="width:'+(r.e?Math.min(100,r.n/r.e*100):0)+'%"></span></div><span>'+nf0.format(r.e?r.n/r.e*100:0)+' %</span></div></td>'+(conFecha?f100(r):'')+'</tr>').join('')+'</tbody>';
-  const sin = Object.keys(D.padUT).filter(u=>!env[u]).sort();
-  $('#sinEnv').innerHTML = '<b>Todavía sin envíos ('+sin.length+'):</b> '+sin.map(esc).join(', ')+'.';
+  const sin = Object.keys(D.padUT).filter(u=>!env[u] && enSec(u)).sort();
+  $('#sinEnv').innerHTML = sin.length ? '<b>Todavía sin envíos ('+sin.length+'):</b> '+sin.map(esc).join(', ')+'.' : 'Todas las unidades territoriales'+(SEC?' de '+esc(secNom()):'')+' tienen al menos un envío.';
   faltan(env);
 }
 // con una UT/OCT filtrada: servicios de su padrón que todavía no tienen envío vigente en el mes
@@ -393,7 +421,7 @@ function ultimos(){
   const fh = f => /^\d{4}-\d{2}-\d{2}/.test(f) ? f.slice(8,10)+'/'+f.slice(5,7)+' '+f.slice(11,16) : 'sin fecha';
   const mes = mesTxt(D.periodo).replace(/ \d{4}$/,'');
   $('#ultLede').textContent = (L.length>10 ? 'Los 10 envíos más recientes' : L.length===1 ? 'El único envío' : 'Los '+L.length+' envíos')+
-    ' para '+mes+(tot ? ', de todas las UT/OCT' : ' '+deSel())+', del más reciente al más antiguo. Un reenvío reemplaza al envío anterior del mismo servicio alimentario; pase el cursor sobre sus cambios para ver el detalle.';
+    ' para '+mes+(tot ? (SEC ? ', de las UT/OCT de '+secNom() : ', de todas las UT/OCT') : ' '+deSel())+', del más reciente al más antiguo. Un reenvío reemplaza al envío anterior del mismo servicio alimentario; pase el cursor sobre sus cambios para ver el detalle.';
   if (!top.length){ $('#tUlt').innerHTML = ''; $('#ultLede').textContent = 'Todavía no hay envíos para '+mes+(tot?'':' '+deSel())+'.'; return; }
   $('#tUlt').innerHTML = '<thead><tr><th>Recibido</th>'+(tot?'<th>UT/OCT</th>':'')+'<th>Servicio alimentario</th><th class="n">CUI</th><th>Estado</th><th>Cambios respecto del envío anterior</th></tr></thead><tbody>'+
     top.map(({r,re})=>{ const s = r[5] && byCui[r[2]];
@@ -560,7 +588,7 @@ function calidad(){
 function irDetalle(cui){
   const s = byCui[cui]; if(!s) return;
   if ($('#vRes').hidden) tab('res');
-  if (UT==='TODAS' || !sel().includes(s)){ UT=s.ut; CG=''; SAF=''; $('#fUT').value=UT; llenarFiltros(); }   // el detalle solo existe con la UT filtrada
+  if (UT==='TODAS' || !sel().includes(s)){ if (!enSec(s.ut)) SEC=''; UT=s.ut; CG=''; SAF=''; $('#fUT').value=UT; llenarFiltros(); }   // el detalle solo existe con la UT filtrada
   $('#q').value=''; openCui = cui; render();
   const tr = document.querySelector('#tSA tr[data-cui="'+cui+'"]');
   (tr||$('#detalle')).scrollIntoView({behavior:'smooth', block:'center'});
@@ -1449,7 +1477,7 @@ function tab(which){
 }
 $('#tbRes').onclick = ()=>tab('res'); $('#tbMen').onclick = ()=>tab('menu'); $('#tbEnv').onclick = ()=>tab('env');
 // abrir el menú de un servicio desde el detalle
-window.__verMenu = (cui, sem, op) => { FOCO = op ? Object.assign({cui}, op) : null; SA = cui; const s0=byCui[cui]; if(s0 && !sel().includes(s0)){ UT='TODAS'; CG=''; SAF=''; $('#fUT').value=UT; llenarFiltros(); render(); } if(sem){ SEM = sem; } tab('menu'); if(sem){ SEM = sem; if(op && op.f){ DIA = (pd(op.f).getDay()+6)%7; DIAkey = cui+'|'+sem; } llenarSem(true); hoja(); }
+window.__verMenu = (cui, sem, op) => { FOCO = op ? Object.assign({cui}, op) : null; SA = cui; const s0=byCui[cui]; if(s0 && !sel().includes(s0)){ SEC=''; UT='TODAS'; CG=''; SAF=''; $('#fUT').value=UT; llenarFiltros(); render(); } if(sem){ SEM = sem; } tab('menu'); if(sem){ SEM = sem; if(op && op.f){ DIA = (pd(op.f).getDay()+6)%7; DIAkey = cui+'|'+sem; } llenarSem(true); hoja(); }
   if(op && op.f){ requestAnimationFrame(()=>{ const sh=$('#sheet'); const th=sh.querySelector('th.fo'); const top=sh.getBoundingClientRect().top+window.scrollY-70; window.scrollTo(0, Math.max(0,top));
     if(th && sh.scrollWidth>sh.clientWidth) sh.scrollLeft = Math.max(0, th.offsetLeft - sh.clientWidth/2 + th.offsetWidth/2); }); }
   else window.scrollTo(0,0); };
@@ -1459,11 +1487,11 @@ $('#segMacV').addEventListener('click', e=>{ const b=e.target.closest('[data-vis
 let rzT; window.addEventListener('resize', ()=>{ clearTimeout(rzT); rzT=setTimeout(graficoMacro, 150); }, {signal: AC.signal});
 // con una UT/OCT filtrada, su nombre va en los títulos de las secciones (y las tablas dejan de repetirlo en una columna)
 function titulosUT(){
-  const tag = UT==='TODAS' ? '' : ' · '+UT+(CG?' · CG '+CG:'')+(SAF?' · '+(byCui[SAF]||{}).sa:'');
+  const tag = UT==='TODAS' ? (SEC ? ' · UT/OCT de '+secNom() : '') : ' · '+UT+(CG?' · CG '+CG:'')+(SAF?' · '+(byCui[SAF]||{}).sa:'');
   const hu = document.querySelector('#hUT'); if (hu) hu.textContent = tag;
   document.querySelectorAll('#vRes section > h2, #vEnv section > h2, h3.ut-t, #nutHead').forEach(h=>{
     h.querySelectorAll('.uttag').forEach(x=>x.remove());
-    if (UT==='TODAS') return;
+    if (!tag) return;
     const t = document.createElement('span'); t.className='uttag'; t.textContent = tag;
     const chip = h.querySelector('.chip, .nut-src'); chip ? h.insertBefore(t, chip) : h.appendChild(t);
   });
@@ -1543,7 +1571,7 @@ async function exportarPNG(btn){
     c.querySelectorAll('.scroll').forEach(x=>{ x.style.overflow = 'visible'; });
     c.querySelectorAll('th, td').forEach(x=>{ if (x.style.transform) x.style.transform = ''; });
     w.appendChild(c);
-    const sel = UT==='TODAS' ? 'Todas las UT/OCT' : UT+(CG?' · CG '+CG:'')+(SAF?' · '+(byCui[SAF]||{}).sa:'');
+    const sel = UT==='TODAS' ? (SEC ? 'UT/OCT de '+secNom() : 'Todas las UT/OCT') : UT+(CG?' · CG '+CG:'')+(SAF?' · '+(byCui[SAF]||{}).sa:'');
     const pie = document.createElement('div'); pie.className = 'pngpie';
     pie.textContent = 'Envíos del menú · '+mesTxt(D.periodo)+' · '+sel+(/^\d{4}-\d{2}-\d{2}/.test(String(D.corte)) ? ' · datos al '+D.corte.slice(8,10)+'/'+D.corte.slice(5,7)+'/'+D.corte.slice(0,4)+' '+D.corte.slice(11)+' h' : '')+' · Programa Nacional Cuna Más';
     w.appendChild(pie);
@@ -1565,10 +1593,10 @@ on('click', e=>{ const b = e.target.closest('.pngbtn'); if (b){ e.preventDefault
 
 function render(){ titulosUT(); kpis(); coberturaNut(); avance(); porDia(); ultimos(); calidad(); ejec(); nino(); foods(); alertasAporte(); resumenCob(); resumenMacro(); graficoMacro(); alertasMacro(); prov(); detalle(); if(!$('#vMen').hidden) menuSemanal(true); }
 const E0 = arguments[2];
-if (E0){ if (E0.SA) SA=E0.SA; if (E0.UT && (E0.UT==='TODAS' || uts.includes(E0.UT))){ UT=E0.UT; $('#fUT').value=UT; } CG=E0.CG||''; SAF=E0.SAF||''; llenarFiltros(); if (E0.SEM!=null) SEM=E0.SEM; openCui=E0.openCui; sortK=E0.sortK; sortD=E0.sortD; macSel=E0.macSel; macVista=E0.macVista; $('#q').value=E0.q||''; DIA=E0.DIA; DIAkey=E0.DIAkey; FOCO=E0.FOCO;
+if (E0){ if (E0.SA) SA=E0.SA; if (E0.SEC!==undefined) SEC = SECT[E0.SEC] ? E0.SEC : ''; if (E0.UT && (E0.UT==='TODAS' || uts.includes(E0.UT))){ UT=E0.UT; $('#fUT').value=UT; } CG=E0.CG||''; SAF=E0.SAF||''; llenarFiltros(); if (E0.SEM!=null) SEM=E0.SEM; openCui=E0.openCui; sortK=E0.sortK; sortD=E0.sortD; macSel=E0.macSel; macVista=E0.macVista; $('#q').value=E0.q||''; DIA=E0.DIA; DIAkey=E0.DIAkey; FOCO=E0.FOCO;
   if (E0.metric==='kg'){ metric='kg'; $('#mK').setAttribute('aria-pressed','true'); $('#mS').setAttribute('aria-pressed','false'); } }
 render();
 if(location.hash==='#menu-semanal') tab('menu'); else if(location.hash==='#envios') tab('env');
-return { estado: () => ({SA, UT, CG, SAF, SEM, openCui, sortK, sortD, metric, macSel, macVista, q:$('#q').value, DIA, DIAkey, FOCO}) };
+return { estado: () => ({SA, SEC, UT, CG, SAF, SEM, openCui, sortK, sortD, metric, macSel, macVista, q:$('#q').value, DIA, DIAkey, FOCO}) };
 }
 

@@ -28,6 +28,11 @@ table.rc td.bajo,table.rc td.igual{text-decoration:underline dotted;text-underli
 
 /* filtros de comité y servicio; tooltip sobre las ventanas emergentes */
 .bar .fgrp #fCG,.bar .fgrp #fSAF{max-width:250px}
+.bar .limpiar{font:inherit;font-size:13px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:6px 12px;border:1px solid var(--azul);border-radius:8px;background:var(--surface);color:var(--azul);cursor:pointer;white-space:nowrap}
+.bar .limpiar svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.bar .limpiar:hover:not(:disabled){background:var(--azul);color:#fff}
+.bar .limpiar:disabled{border-color:var(--rule);color:var(--muted);cursor:default}
+@media (max-width:760px){.bar .limpiar{font-size:13px;padding-block:5px}}
 #tip{z-index:40}
 
 /* N° de los listados y descarga en PNG */
@@ -369,9 +374,11 @@ h3.ut-t .uttag{margin-right:6px}
       <button type="button" role="tab" id="tbEnv" aria-selected="false" aria-controls="vEnv">Envíos</button>
     </div>
     <span class="fgrp" title="Entre paréntesis, los envíos vigentes"><label for="fMes">Mes</label><select id="fMes"></select></span>
+    <span class="fgrp" title="Entre paréntesis, los envíos vigentes de las UT/OCT de cada sectorista"><label for="fSEC">Sectorista</label><select id="fSEC"></select></span>
     <span class="fgrp" title="Entre paréntesis, los envíos vigentes"><label for="fUT">Unidad territorial</label><select id="fUT"></select></span>
     <span class="fgrp" title="Entre paréntesis, los envíos vigentes"><label for="fCG">Comité de gestión</label><select id="fCG"></select></span>
     <span class="fgrp"><label for="fSAF">Servicio alimentario</label><select id="fSAF"></select></span>
+    <button type="button" id="fLimpiar" class="limpiar" title="Quitar los filtros de sectorista, unidad territorial, comité y servicio (el mes se mantiene)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4-2v-4z"/><path d="M16 16l5 5M21 16l-5 5"/></svg>Limpiar filtros</button>
     <nav aria-label="Secciones" id="navRes">
       <a href="#presupuesto">Presupuesto</a><a href="#alimentos">Alimentos</a><a href="#aporte">Aporte</a><a href="#calidad">Calidad</a><a href="#detalle">Detalle</a>
     </nav>

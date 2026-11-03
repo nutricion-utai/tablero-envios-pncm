@@ -586,16 +586,16 @@ function calidad(){
   const vis = items.filter(([n,h])=>n || info(h));
   const hayObs = vis.some(([n,h])=>!info(h));
   $('#obs').innerHTML = (hayObs ? '' : okBox('Sin observaciones en '+quien+': los CUI corresponden al padrón, los proveedores y RUC coinciden con los adjudicados y ningún costo supera el presupuesto.')) + obsHTML(vis.filter(([n,h])=>n));
-  const envIt = items.filter(([n,h])=>/^CUI que no corresponde|^Envíos reemplazados|^CUI que no está en el padrón/.test(h));
+  // en Alertas sobre los envíos no se consideran los CUI que no están en el padrón (siguen en Calidad de los datos)
+  const envIt = items.filter(([n,h])=>/^CUI que no corresponde|^Envíos reemplazados/.test(h));
   const envAl = envIt.filter(([n,h])=>n && !info(h));
   // Alertas sobre los envíos, organizadas por UT/OCT (en orden alfabético): un bloque por UT/OCT con sus alertas por tipo y sus reenvíos
-  const TIPOS_E = [['cui','CUI que no corresponde al servicio','El envío vigente, el avance y la unidad territorial se calculan con el CUI del padrón; conviene corregir el CUI en la herramienta.'],
-                   ['fuera','CUI que no está en el padrón','Se cuenta en el avance y se suma a los esperados de su UT/OCT.']];
+  const TIPOS_E = [['cui','CUI que no corresponde al servicio','El envío vigente, el avance y la unidad territorial se calculan con el CUI del padrón; conviene corregir el CUI en la herramienta.']];
   const resumenE = TIPOS_E.map(([t,tit,exp])=>{ const n = porUTe.filter(o=>o.t===t).length; if (!n) return '';
       const nu = new Set(porUTe.filter(o=>o.t===t).map(o=>o.ut)).size;
       return '<article><div class="num">'+n+'</div><h4>'+tit+'</h4><p>'+(UT==='TODAS' ? 'En '+nu+(nu===1?' UT/OCT':' UT/OCT')+'. ' : '')+exp+'</p></article>'; }).join('')
     + envIt.filter(([n,h])=>n && info(h)).map(([n,h,p])=>'<article><div class="num" style="color:var(--muted)">'+n+'</div><h4>'+h+'</h4><p>'+p+'</p></article>').join('');
-  const gUT = {}; porUTe.forEach(o=>(gUT[o.ut]=gUT[o.ut]||[]).push(o));
+  const gUT = {}; porUTe.filter(o=>TIPOS_E.some(([t])=>t===o.t)).forEach(o=>(gUT[o.ut]=gUT[o.ut]||[]).push(o));
   const reUT = {}, envUT = {}; S.forEach(s=>{ const u=utDeS(s); reUT[u]=(reUT[u]||0)+s.reenv; envUT[u]=(envUT[u]||0)+1+s.reenv; });
   const utsAl = Object.keys(gUT).sort((x,y)=>x.localeCompare(y,'es'));
   const unaUT = UT!=='TODAS' || utsAl.length===1;

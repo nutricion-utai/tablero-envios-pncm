@@ -323,7 +323,6 @@ function faltan(env){
     fl.map((p,i)=>'<tr><td class="n">'+(i+1)+'</td><td>'+esc(p[2])+'</td><td class="n">'+esc(p[1])+'</td><td>'+esc(p[3])+'</td><td>'+esc(p[4])+'</td></tr>').join('')+'</tbody>';
 }
 // -------- servicios del padrón sin envío vigente, para la selección de arriba (sectorista, UT/OCT y comité); descarga en Excel
-const secDe = u => { const e = Object.entries(SECT).find(([k,o])=>o.set.has(nUT(u))); return e ? e[1].n : ''; };
 function sinEnvio(){
   const PADL = D.pad || window.__PAD; if (!PADL) return null;
   const env = {}; D.sa.forEach(s=>{ (env[s.ut]=env[s.ut]||new Set()).add(String(s.cuiPad||s.cui)); });
@@ -354,21 +353,22 @@ async function descargarSinEnvio(btn){
   try {
     const X = await cargarXLSX();
     const mesL = mesTxt(D.periodo), corte = /^\d{4}-\d{2}-\d{2}/.test(String(D.corte)) ? D.corte.slice(8,10)+'/'+D.corte.slice(5,7)+'/'+D.corte.slice(0,4)+' '+D.corte.slice(11)+' h' : 'sin fecha de corte';
-    const selTxt = UT==='TODAS' ? (SEC ? 'UT/OCT de '+secNom() : 'Todas las UT/OCT') : UT+(CG ? ' · CG '+CG : '');
-    const cab = ['N°','Sectorista','UT/OCT','Comité de gestión','CUI','Servicio alimentario','Distrito'];
-    const filas = L.fl.map((p,i)=>[i+1, secDe(p[0]), p[0], nCG(p[3]), /^\d+$/.test(String(p[1])) ? +p[1] : String(p[1]), String(p[2]).replace(/\s+/g,' ').trim(), p[4]||'']);
+    // sin datos de sectoristas: el archivo puede remitirse a las UT/OCT
+    const nUTs = L.res.length, selTxt = UT==='TODAS' ? (SEC ? nUTs+' UT/OCT' : 'Todas las UT/OCT') : UT+(CG ? ' · CG '+CG : '');
+    const cab = ['N°','UT/OCT','Comité de gestión','CUI','Servicio alimentario','Distrito'];
+    const filas = L.fl.map((p,i)=>[i+1, p[0], nCG(p[3]), /^\d+$/.test(String(p[1])) ? +p[1] : String(p[1]), String(p[2]).replace(/\s+/g,' ').trim(), p[4]||'']);
     const h1 = X.utils.aoa_to_sheet([['Servicios alimentarios sin envío vigente · '+mesL], ['Selección: '+selTxt+' · datos al '+corte+' · '+L.fl.length+' de '+L.tot+' servicios del padrón'], [], cab].concat(filas));
-    h1['!cols'] = [{wch:5},{wch:24},{wch:30},{wch:34},{wch:9},{wch:46},{wch:24}];
-    h1['!autofilter'] = {ref: 'A4:G'+(4+filas.length)};
-    h1['!merges'] = [{s:{r:0,c:0}, e:{r:0,c:6}}, {s:{r:1,c:0}, e:{r:1,c:6}}];
-    const cab2 = ['Sectorista','UT/OCT','Servicios del padrón','Con envío vigente','Sin envío','Avance'];
-    const f2 = L.res.map(o=>[secDe(o.ut), o.ut, o.e, o.n, o.e-o.n, o.e ? o.n/o.e : 0]);
+    h1['!cols'] = [{wch:5},{wch:30},{wch:34},{wch:9},{wch:46},{wch:24}];
+    h1['!autofilter'] = {ref: 'A4:F'+(4+filas.length)};
+    h1['!merges'] = [{s:{r:0,c:0}, e:{r:0,c:5}}, {s:{r:1,c:0}, e:{r:1,c:5}}];
+    const cab2 = ['UT/OCT','Servicios del padrón','Con envío vigente','Sin envío','Avance'];
+    const f2 = L.res.map(o=>[o.ut, o.e, o.n, o.e-o.n, o.e ? o.n/o.e : 0]);
     const tE = sum(L.res.map(o=>o.e)), tN = sum(L.res.map(o=>o.n));
-    const h2 = X.utils.aoa_to_sheet([['Avance de los envíos por UT/OCT · '+mesL], ['Selección: '+selTxt+' · datos al '+corte+' · no incluye los servicios que enviaron con un CUI fuera del padrón'], [], cab2].concat(f2, [['', 'Total', tE, tN, tE-tN, tE ? tN/tE : 0]]));
-    h2['!cols'] = [{wch:24},{wch:32},{wch:20},{wch:18},{wch:12},{wch:10}];
-    for (let r = 4; r <= 4+f2.length; r++){ const c = h2[X.utils.encode_cell({r, c:5})]; if (c) c.z = '0.0%'; }
-    h2['!autofilter'] = {ref: 'A4:F'+(4+f2.length)};
-    h2['!merges'] = [{s:{r:0,c:0}, e:{r:0,c:5}}, {s:{r:1,c:0}, e:{r:1,c:5}}];
+    const h2 = X.utils.aoa_to_sheet([['Avance de los envíos por UT/OCT · '+mesL], ['Selección: '+selTxt+' · datos al '+corte+' · no incluye los servicios que enviaron con un CUI fuera del padrón'], [], cab2].concat(f2, [['Total', tE, tN, tE-tN, tE ? tN/tE : 0]]));
+    h2['!cols'] = [{wch:32},{wch:20},{wch:18},{wch:12},{wch:10}];
+    for (let r = 4; r <= 4+f2.length; r++){ const c = h2[X.utils.encode_cell({r, c:4})]; if (c) c.z = '0.0%'; }
+    h2['!autofilter'] = {ref: 'A4:E'+(4+f2.length)};
+    h2['!merges'] = [{s:{r:0,c:0}, e:{r:0,c:4}}, {s:{r:1,c:0}, e:{r:1,c:4}}];
     const wb = X.utils.book_new(); X.utils.book_append_sheet(wb, h1, 'Sin envío'); X.utils.book_append_sheet(wb, h2, 'Resumen por UT');
     const buf = X.write(wb, {bookType:'xlsx', type:'array'});
     const nom = 'servicios_sin_envio_'+D.periodo+'_'+(slugPNG(selTxt)||'seleccion')+'.xlsx';

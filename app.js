@@ -513,6 +513,104 @@ function prov(){
   });
 }
 
+// ================= ALIMENTOS: EXPLORADOR DEL PEDIDO (segmentación de datos) =================
+// Segmentadores por UT/OCT, tipo (no perecible / perecible), grupo de alimentos y alimento, con filtro cruzado: cada segmentador
+// muestra sus valores con lo elegido en los demás. Se puede elegir más de una opción en cada uno. Trabaja sobre los servicios del
+// filtro de arriba (sectorista, UT/OCT, comité, servicio). Montos y cantidades del pedido vigente (hojas PNP y PPTOTAL), sin saldos.
+const XD = ['ut','t','g','a'];
+const XS = {ut:new Set(), t:new Set(), g:new Set(), a:new Set()};
+let xMet = 's', xQ = '', xSortK = 'v', xSortD = -1, xTodos = false;
+const capG = g => { g = String(g||''); return g.charAt(0)+g.slice(1).toLowerCase(); };
+const TIPO_N = ['No perecible','Perecible'];
+const xKey = (r,d) => d==='ut' ? r.ut : d==='t' ? r.t : d==='g' ? r.g : r.a;
+const xNom = (d,k) => d==='ut' ? k : d==='t' ? TIPO_N[k] : d==='g' ? capG(D.grupos[k]) : D.alimentos[k][0];
+const xPasa = (r, salvo) => XD.every(d=> d===salvo || !XS[d].size || XS[d].has(xKey(r,d)));
+const fKg = v => (Math.abs(v) < 10 ? nf1 : nf0).format(v);
+const xFmt = (o, m) => (m||xMet)==='s' ? S0(o.s) : fKg(o.kg)+' kg o L';
+const pKg = (s, kg) => kg > 0 ? 'S/ '+nf2.format(s/kg) : '—';
+ICO_TARJ['monto pedido'] = 'costo'; ICO_TARJ['servicios alimentarios'] = 'sa'; ICO_TARJ['unidades territoriales'] = 'ut';
+function xFilas(){
+  const set = new Set(sel().map(s=>s.cui)), R = [];
+  D.food.forEach(([c,a,t,kg,s])=>{ if (!set.has(c)) return; const sv = byCui[c]; R.push({c, ut: sv ? sv.ut : '—', a, g: D.alimentos[a][1], t, kg, s}); });
+  return R;
+}
+function xSlicer(d, R){
+  const base = new Map();
+  R.forEach(r=>{ const k = xKey(r,d); if (!base.has(k)) base.set(k, {k, s:0, kg:0}); });
+  R.forEach(r=>{ if (!xPasa(r,d)) return; const o = base.get(xKey(r,d)); o.s += r.s; o.kg += r.kg; });
+  let L = [...base.values()].sort((x,y)=> (y[xMet]-x[xMet]) || String(xNom(d,x.k)).localeCompare(String(xNom(d,y.k)),'es'));
+  if (d==='a' && xQ){ const q = nUT(xQ); L = L.filter(o=> XS.a.has(o.k) || nUT(xNom('a',o.k)).includes(q)); }
+  const mx = Math.max(1e-9, ...L.map(o=>o[xMet])), tot = sum(L.map(o=>o[xMet]));
+  const el = $('#xs_'+d); if (!el) return;
+  el.innerHTML = L.map(o=>{ const on = XS[d].has(o.k), cero = !o[xMet] && !on;
+    const tip = '<b>'+esc(xNom(d,o.k))+'</b><br>'+S0(o.s)+' · '+fKg(o.kg)+' kg o L'+(tot?'<br>'+P1(o[xMet]/tot)+' de lo que muestra este segmentador':'')+(on?'<br>Elegido: toque para quitarlo':'<br>Toque para filtrar');
+    return '<button type="button" class="xs-it'+(cero?' cero':'')+'" data-xd="'+d+'" data-xk="'+esc(String(o.k))+'" aria-pressed="'+on+'"'+(cero?' disabled':'')+' data-tip="'+esc(tip)+'">'+
+      '<span class="xs-n">'+(d==='t'?'<i class="sw" style="background:'+(o.k?'var(--magenta)':'var(--azul)')+'"></i>':'')+esc(xNom(d,o.k))+'</span><span class="xs-v">'+xFmt(o)+'</span>'+
+      '<span class="xs-b"><span style="width:'+(o[xMet]/mx*100).toFixed(1)+'%;background:'+(d==='t'?(o.k?'var(--magenta)':'var(--azul)'):'var(--azul)')+'"></span></span></button>'; }).join('')
+    || '<p class="note" style="margin:6px 2px">'+(d==='a'&&xQ ? 'Ningún alimento coincide con la búsqueda.' : 'Sin datos para esta selección.')+'</p>';
+  const q = document.querySelector('[data-xq="'+d+'"]'); if (q) q.hidden = !XS[d].size;
+}
+function explorar(){
+  if (!$('#xKpi')) return;
+  const R = xFilas();
+  // lo elegido que ya no está en la selección de arriba se quita
+  XD.forEach(d=>{ const hay = new Set(R.map(r=>xKey(r,d))); [...XS[d]].forEach(k=>{ if (!hay.has(k)) XS[d].delete(k); }); });
+  XD.forEach(d=>xSlicer(d, R));
+  const F = R.filter(r=>xPasa(r, null));
+  const tS = sum(F.map(r=>r.s)), tK = sum(F.map(r=>r.kg)), totS = sum(R.map(r=>r.s));
+  const nA = new Set(F.map(r=>r.a)).size, nS = new Set(F.map(r=>r.c)).size, nU = new Set(F.map(r=>r.ut)).size;
+  const algo = XD.some(d=>XS[d].size);
+  $('#xLimpiar').disabled = !algo;
+  $('#xSel').innerHTML = algo ? 'Elegido: '+XD.filter(d=>XS[d].size).map(d=>'<b>'+[...XS[d]].map(k=>esc(xNom(d,k))).join(', ')+'</b>').join(' · ') : 'Sin segmentación: se muestra todo el pedido de la selección de arriba.';
+  const tiles = [
+    ['Monto pedido', S0(tS), algo && totS ? P1(tS/totS)+' del monto de la selección' : 'pedido vigente, sin saldos'],
+    ['Cantidad', fKg(tK), 'kg o L'+(nA===1 && tK ? ' · '+pKg(tS,tK)+' por kg o L' : '')],
+    ['Alimentos', nf0.format(nA), 'distintos en el pedido'],
+    ['Servicios alimentarios', nf0.format(nS), 'que los piden'],
+    ['Unidades territoriales', nf0.format(nU), nU===1 ? esc(F[0].ut) : 'con pedido']
+  ];
+  $('#xKpi').innerHTML = tiles.map(t=>'<div class="kpi">'+labI(t[0])+'<span class="val">'+t[1]+'</span><span class="sub">'+t[2]+'</span></div>').join('');
+  // detalle por alimento
+  const m = {};
+  F.forEach(r=>{ const o = m[r.a] || (m[r.a] = {a:r.a, g:r.g, t:r.t, s:0, kg:0, sv:new Set(), u:new Set()}); o.s += r.s; o.kg += r.kg; o.sv.add(r.c); o.u.add(r.ut); });
+  const val = {n:o=>D.alimentos[o.a][0], g:o=>capG(D.grupos[o.g]), t:o=>o.t, kg:o=>o.kg, v:o=>o.s, p:o=>o.kg>0?o.s/o.kg:-1, sv:o=>o.sv.size, u:o=>o.u.size};
+  const L = Object.values(m).sort((x,y)=>{ const a = val[xSortK](x), b = val[xSortK](y);
+    const c = typeof a==='string' ? a.localeCompare(b,'es') : (a>b?1:a<b?-1:0); return c*xSortD || (y.s-x.s); });
+  const cols = [['n','Alimento',0],['g','Grupo',0],['t','Tipo',0],['kg','Cantidad<br>(kg o L)',1],['v','Monto<br>(S/)',1],['pc','% del<br>monto',1],['p','S/ por<br>kg o L',1],['sv','Servicios',1],['u','UT/OCT',1]];
+  const vis = xTodos ? L : L.slice(0,25);
+  $('#xTabN').textContent = L.length ? L.length+(L.length===1?' alimento':' alimentos')+' en la selección. Toque un encabezado para ordenar; toque un alimento para filtrar por él. El precio por kg o L es el promedio ponderado: monto entre cantidad.' : '';
+  $('#xTab').innerHTML = !L.length ? '' : '<thead><tr>'+cols.map(([k,t,n])=>'<th class="'+(k==='pc'?'':'sort')+(n?' n':'')+'"'+(k==='pc'?'':' tabindex="0" data-xs="'+k+'"')+'>'+t+(xSortK===k?(xSortD>0?' ↑':' ↓'):'')+'</th>').join('')+'</tr></thead><tbody>'+
+    vis.map(o=>'<tr><td><a href="#" class="salink" data-xa="'+o.a+'" title="Filtrar por este alimento">'+esc(D.alimentos[o.a][0])+'</a></td><td>'+esc(capG(D.grupos[o.g]))+'</td><td><i class="sw" style="background:'+(o.t?'var(--magenta)':'var(--azul)')+'"></i>'+TIPO_N[o.t]+'</td>'+
+      '<td class="n">'+fKg(o.kg)+'</td><td class="n">'+S0(o.s)+'</td><td class="n">'+P1(tS?o.s/tS:0)+'</td><td class="n">'+pKg(o.s,o.kg)+'</td><td class="n">'+o.sv.size+'</td><td class="n">'+o.u.size+'</td></tr>').join('')+
+    '<tr class="xs-tot"><td colspan="3">Total</td><td class="n">'+fKg(tK)+'</td><td class="n">'+S0(tS)+'</td><td class="n">100.0 %</td><td></td><td class="n">'+nS+'</td><td class="n">'+nU+'</td></tr></tbody>';
+  const mb = $('#xMas'); mb.hidden = L.length <= 25; mb.textContent = xTodos ? 'Mostrar solo los 25 primeros' : 'Mostrar los '+L.length+' alimentos';
+  // precio por kg o L de un alimento: por UT/OCT (o por servicio si hay una sola UT/OCT)
+  const unA = L.length===1 ? L[0] : null;
+  if (!unA){ $('#xPrecioH').textContent = 'Precio pagado por kg o L'; $('#xPrecioN').textContent = 'Elija un solo alimento (en el segmentador o en la tabla) para comparar el precio que se paga por él en cada UT/OCT.'; $('#xPrecio').innerHTML = ''; return; }
+  const porSv = nU===1, g = {};
+  F.forEach(r=>{ if (!(r.kg>0)) return; const k = porSv ? r.c : r.ut; const o = g[k] || (g[k] = {k, s:0, kg:0, ps:[]}); o.s += r.s; o.kg += r.kg; o.ps.push(r.s/r.kg); });
+  const G = Object.values(g).map(o=>Object.assign(o,{p:o.s/o.kg})).sort((x,y)=>y.p-x.p), ref = tK ? tS/tK : 0;
+  $('#xPrecioH').textContent = 'Precio pagado por kg o L de '+capG(D.alimentos[unA.a][0])+', por '+(porSv?'servicio alimentario':'UT/OCT');
+  $('#xPrecioN').textContent = 'Promedio ponderado (monto entre cantidad) de lo pedido por los servicios'+(porSv?'':' de cada UT/OCT')+'. La línea punteada marca el promedio de la selección: '+pKg(tS,tK)+' por kg o L.';
+  hbars($('#xPrecio'), G.map((o,i)=>{ const sv = porSv ? byCui[o.k] : null, mn = Math.min(...o.ps), mx = Math.max(...o.ps);
+    return {name:(i+1)+'. '+(sv?sv.sa:o.k), value:o.p, label:pKg(o.s,o.kg), go: sv ? sv.cui : null, goUT: !sv ? o.k : null,
+      tip:'<b>'+esc(sv?sv.sa:o.k)+'</b><br>'+pKg(o.s,o.kg)+' por kg o L · '+fKg(o.kg)+' kg o L por '+S0(o.s)+(o.ps.length>1?'<br>Entre servicios: de S/ '+nf2.format(mn)+' a S/ '+nf2.format(mx)+' ('+o.ps.length+' servicios)':'')}; }), {ref});
+}
+on('click', e=>{ const b = e.target.closest('[data-xd]'); if (!b || b.disabled) return;
+  const d = b.dataset.xd, k = d==='ut' ? b.dataset.xk : +b.dataset.xk;
+  XS[d].has(k) ? XS[d].delete(k) : XS[d].add(k); xTodos = false; explorar(); });
+on('click', e=>{ const b = e.target.closest('[data-xq]'); if (!b) return; XS[b.dataset.xq].clear(); explorar(); });
+on('click', e=>{ const a = e.target.closest('[data-xa]'); if (!a) return; e.preventDefault(); e.stopPropagation(); const k = +a.dataset.xa;
+  if (XS.a.size===1 && XS.a.has(k)) XS.a.clear(); else { XS.a.clear(); XS.a.add(k); } explorar(); $('#xs_a').closest('.panel').scrollIntoView({behavior:'smooth', block:'nearest'}); });
+on('click', e=>{ const th = e.target.closest('#xTab th[data-xs]'); if (!th) return; const k = th.dataset.xs;
+  if (xSortK===k) xSortD = -xSortD; else { xSortK = k; xSortD = (k==='n'||k==='g'||k==='t') ? 1 : -1; } explorar(); });
+on('keydown', e=>{ if ((e.key==='Enter'||e.key===' ') && e.target.matches && e.target.matches('#xTab th[data-xs]')){ e.preventDefault(); e.target.click(); } });
+$('#xLimpiar').addEventListener('click', ()=>{ XD.forEach(d=>XS[d].clear()); xQ=''; $('#xQ').value=''; xTodos=false; explorar(); });
+$('#xMas').addEventListener('click', ()=>{ xTodos = !xTodos; explorar(); });
+$('#xQ').addEventListener('input', e=>{ xQ = e.target.value; xSlicer('a', xFilas()); });
+$('#xMetS').onclick = ()=>{ xMet='s'; $('#xMetS').setAttribute('aria-pressed','true'); $('#xMetK').setAttribute('aria-pressed','false'); explorar(); };
+$('#xMetK').onclick = ()=>{ xMet='kg'; $('#xMetK').setAttribute('aria-pressed','true'); $('#xMetS').setAttribute('aria-pressed','false'); explorar(); };
+
 // RUC válido: 11 dígitos y dígito verificador de SUNAT (pesos 5-4-3-2-7-6-5-4-3-2)
 // RUC de persona natural (empieza con 10 y contiene el DNI): no se publica. En los datos llega como "PN<n>:<v|x>:<largo>:<d|o>".
 const esPN = r => /^PN\d+:/.test(String(r||''));
@@ -1496,8 +1594,8 @@ $('#wNext').onclick = ()=>{ const s=semanasDe(SA); const i=s.findIndex(w=>w.s===
 $('#wHoy').onclick = ()=>{ SEM=semanaEnCurso(semanasDe(SA)); llenarSem(true); hoja(); };
 
 // pestañas
-// vistas: Resumen, Menú semanal y Envíos (avance de los envíos)
-const VISTAS = {res:['#vRes','#tbRes','#resumen'], menu:['#vMen','#tbMen','#menu-semanal'], env:['#vEnv','#tbEnv','#envios']};
+// vistas: Resumen, Envíos, Menú semanal, Alimentos y Proveedores
+const VISTAS = {res:['#vRes','#tbRes','#resumen'], env:['#vEnv','#tbEnv','#envios'], menu:['#vMen','#tbMen','#menu-semanal'], ali:['#vAli','#tbAli','#alimentos'], prov:['#vProv','#tbProv','#proveedores']};
 function tab(which){
   if(!VISTAS[which]) which='res';
   Object.entries(VISTAS).forEach(([k,[v,b]])=>{ $(v).hidden = k!==which; $(b).setAttribute('aria-selected', String(k===which)); });
@@ -1506,7 +1604,7 @@ function tab(which){
   if(which==='menu') menuSemanal(true);
   window.scrollTo(0,0);
 }
-$('#tbRes').onclick = ()=>tab('res'); $('#tbMen').onclick = ()=>tab('menu'); $('#tbEnv').onclick = ()=>tab('env');
+$('#tbRes').onclick = ()=>tab('res'); $('#tbMen').onclick = ()=>tab('menu'); $('#tbEnv').onclick = ()=>tab('env'); $('#tbAli').onclick = ()=>tab('ali'); $('#tbProv').onclick = ()=>tab('prov');
 // abrir el menú de un servicio desde el detalle
 window.__verMenu = (cui, sem, op) => { FOCO = op ? Object.assign({cui}, op) : null; SA = cui; const s0=byCui[cui]; if(s0 && !sel().includes(s0)){ SEC=''; UT='TODAS'; CG=''; SAF=''; $('#fUT').value=UT; llenarFiltros(); render(); } if(sem){ SEM = sem; } tab('menu'); if(sem){ SEM = sem; if(op && op.f){ DIA = (pd(op.f).getDay()+6)%7; DIAkey = cui+'|'+sem; } llenarSem(true); hoja(); }
   if(op && op.f){ requestAnimationFrame(()=>{ const sh=$('#sheet'); const th=sh.querySelector('th.fo'); const top=sh.getBoundingClientRect().top+window.scrollY-70; window.scrollTo(0, Math.max(0,top));
@@ -1520,7 +1618,7 @@ let rzT; window.addEventListener('resize', ()=>{ clearTimeout(rzT); rzT=setTimeo
 function titulosUT(){
   const tag = UT==='TODAS' ? (SEC ? ' · UT/OCT de '+secNom() : '') : ' · '+UT+(CG?' · CG '+CG:'')+(SAF?' · '+(byCui[SAF]||{}).sa:'');
   const hu = document.querySelector('#hUT'); if (hu) hu.textContent = tag;
-  document.querySelectorAll('#vRes section > h2, #vEnv section > h2, h3.ut-t, #nutHead').forEach(h=>{
+  document.querySelectorAll('#vRes section > h2, #vEnv section > h2, #vAli section > h2, #vProv section > h2, h3.ut-t, #nutHead').forEach(h=>{
     h.querySelectorAll('.uttag').forEach(x=>x.remove());
     if (!tag) return;
     const t = document.createElement('span'); t.className='uttag'; t.textContent = tag;
@@ -1556,8 +1654,8 @@ const slugPNG = t => String(t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLow
 const ICO_PNG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>';
 function botonesPNG(){
   const fila = () => { const d = document.createElement('div'); d.className = 'pngfila'; d.innerHTML = '<button type="button" class="pngbtn" title="Descargar como imagen PNG">'+ICO_PNG+'PNG</button>'; return d; };
-  document.querySelectorAll('#vRes .panel, #vEnv .panel').forEach(p=>{
-    if (p.dataset.png || !p.querySelector('table, #cEjec, #cNino, #cFood, #cGrupo, #cMacG, #cProvNP, #cProvP, #cDia')) return;
+  document.querySelectorAll('#vRes .panel, #vEnv .panel, #vAli .panel, #vProv .panel').forEach(p=>{
+    if (p.dataset.png || !p.querySelector('table, #cEjec, #cNino, #cFood, #cGrupo, #cMacG, #cProvNP, #cProvP, #cDia, #xPrecio')) return;
     p.dataset.png = '1'; const f = fila();
     if (p.classList.contains('scroll')){ f._panel = p; p.after(f); } else p.appendChild(f);   // en un panel con desplazamiento, el botón va debajo
   });
@@ -1623,12 +1721,12 @@ botonesPNG();
 on('click', e=>{ const b = e.target.closest('[data-utals]'); if (!b) return; (b.closest('.utals')||document).querySelectorAll('details.utal').forEach(d=>{ d.open = b.dataset.utals==='1'; }); });
 on('click', e=>{ const b = e.target.closest('.pngbtn'); if (b){ e.preventDefault(); exportarPNG(b); } });
 
-function render(){ titulosUT(); kpis(); coberturaNut(); avance(); porDia(); ultimos(); calidad(); ejec(); nino(); foods(); alertasAporte(); resumenCob(); resumenMacro(); graficoMacro(); alertasMacro(); prov(); detalle(); if(!$('#vMen').hidden) menuSemanal(true); }
+function render(){ titulosUT(); kpis(); coberturaNut(); avance(); porDia(); ultimos(); calidad(); ejec(); nino(); foods(); alertasAporte(); resumenCob(); resumenMacro(); graficoMacro(); alertasMacro(); prov(); explorar(); detalle(); if(!$('#vMen').hidden) menuSemanal(true); }
 const E0 = arguments[2];
-if (E0){ if (E0.SA) SA=E0.SA; if (E0.SEC!==undefined) SEC = SECT[E0.SEC] ? E0.SEC : ''; if (E0.UT && (E0.UT==='TODAS' || uts.includes(E0.UT))){ UT=E0.UT; $('#fUT').value=UT; } CG=E0.CG||''; SAF=E0.SAF||''; llenarFiltros(); if (E0.SEM!=null) SEM=E0.SEM; openCui=E0.openCui; sortK=E0.sortK; sortD=E0.sortD; macSel=E0.macSel; macVista=E0.macVista; $('#q').value=E0.q||''; DIA=E0.DIA; DIAkey=E0.DIAkey; FOCO=E0.FOCO;
+if (E0){ if (E0.XS) XD.forEach(d=>(E0.XS[d]||[]).forEach(k=>XS[d].add(k))); if (E0.xMet==='kg'){ xMet='kg'; $('#xMetK').setAttribute('aria-pressed','true'); $('#xMetS').setAttribute('aria-pressed','false'); } if (E0.xQ){ xQ=E0.xQ; $('#xQ').value=xQ; } if (E0.SA) SA=E0.SA; if (E0.SEC!==undefined) SEC = SECT[E0.SEC] ? E0.SEC : ''; if (E0.UT && (E0.UT==='TODAS' || uts.includes(E0.UT))){ UT=E0.UT; $('#fUT').value=UT; } CG=E0.CG||''; SAF=E0.SAF||''; llenarFiltros(); if (E0.SEM!=null) SEM=E0.SEM; openCui=E0.openCui; sortK=E0.sortK; sortD=E0.sortD; macSel=E0.macSel; macVista=E0.macVista; $('#q').value=E0.q||''; DIA=E0.DIA; DIAkey=E0.DIAkey; FOCO=E0.FOCO;
   if (E0.metric==='kg'){ metric='kg'; $('#mK').setAttribute('aria-pressed','true'); $('#mS').setAttribute('aria-pressed','false'); } }
 render();
-if(location.hash==='#menu-semanal') tab('menu'); else if(location.hash==='#envios') tab('env');
-return { estado: () => ({SA, SEC, UT, CG, SAF, SEM, openCui, sortK, sortD, metric, macSel, macVista, q:$('#q').value, DIA, DIAkey, FOCO}) };
+{ const HV = {'#menu-semanal':'menu', '#envios':'env', '#alimentos':'ali', '#proveedores':'prov'}; if (HV[location.hash]) tab(HV[location.hash]); }
+return { estado: () => ({XS: Object.fromEntries(XD.map(d=>[d,[...XS[d]]])), xMet, xQ, SA, SEC, UT, CG, SAF, SEM, openCui, sortK, sortD, metric, macSel, macVista, q:$('#q').value, DIA, DIAkey, FOCO}) };
 }
 

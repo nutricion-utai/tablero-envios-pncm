@@ -32,7 +32,10 @@ function estadoOk() {
   e.innerHTML = '<span class="pv nuevo"></span><span>' + (nuevos.length === 1 ? 'Nuevo envío recibido: ' : nuevos.length + ' envíos nuevos recibidos; el último: ') +
     '<b>' + u.sa.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])) + '</b> (' + u.ut.replace(/[&<>"]/g, '') + '), ' + hhmm(u.t) + ' h · el tablero se actualiza en un momento</span>';
 }
-const vistaAct = () => !$('#vMen') || $('#vMen').hidden ? ($('#vEnv') && !$('#vEnv').hidden ? 'env' : 'res') : 'menu';
+// pestañas: vista visible y su dirección (#…), para conservarlas al actualizar en vivo o al cambiar de mes
+const VIS = { res: ['#vRes', '#resumen'], env: ['#vEnv', '#envios'], menu: ['#vMen', '#menu-semanal'], ali: ['#vAli', '#alimentos'], prov: ['#vProv', '#proveedores'] };
+const vistaAct = () => { for (const [k, [v]] of Object.entries(VIS)) { const e = $(v); if (e && !e.hidden) return k; } return 'res'; };
+const hashDe = v => (VIS[v] || VIS.res)[1];
 
 /* detalle de un servicio (menú semanal y recetario): true si ya está, o una promesa */
 window.__cargarDet = cui => {
@@ -57,7 +60,7 @@ function montar(conservar) {
   AC.abort(); AC = new AbortController();
   [...document.body.children].filter(n => n.tagName !== 'SCRIPT').forEach(n => n.remove());
   document.body.insertAdjacentHTML('afterbegin', SHELL); document.body.style.overflow = '';
-  if (montado) try { history.replaceState(null, '', vista === 'menu' ? '#menu-semanal' : vista === 'env' ? '#envios' : '#resumen'); } catch (_) {}
+  if (montado) try { history.replaceState(null, '', hashDe(vista)); } catch (_) {}
   app = APP(D, AC, E);
   if (conservar) window.scrollTo(0, y);
   montado = true;
@@ -89,7 +92,7 @@ window.__cambiarMes = p => {
   if (!(p in window.__ENVVIG)) return;
   const vista = vistaAct();
   try { localStorage.setItem('envios_mes', p); } catch (_) {}
-  try { history.replaceState(null, '', vista === 'menu' ? '#menu-semanal' : vista === 'env' ? '#envios' : '#resumen'); } catch (_) {}
+  try { history.replaceState(null, '', hashDe(vista)); } catch (_) {}
   suscribirMes(p);
 };
 

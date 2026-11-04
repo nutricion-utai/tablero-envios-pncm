@@ -114,8 +114,9 @@ select:focus-visible,input:focus-visible,button:focus-visible,th:focus-visible{o
 .bar{transition:transform .22s ease}
 @media (max-width:760px){
   .bar .wrap{display:grid;grid-template-columns:1fr 1fr;gap:6px 8px;padding-block:6px}
-  .bar .tabs{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr)}
-  .bar .tabs button{padding:5px 8px;font-size:13.5px}
+  .bar .tabs{grid-column:1/-1;display:flex}
+  .bar .tabs button{flex:1 1 auto;padding:5px 5px;font-size:12.5px}
+  .bar .tabs .tl{display:none}
   .bar .fgrp{display:block;min-width:0}
   .bar .fgrp label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
   .bar .fgrp select{width:100%;font-size:13px;padding-block:5px;text-overflow:ellipsis}
@@ -171,6 +172,34 @@ svg .ax{stroke:var(--rule);stroke-width:1}
 .obs .num{font-family:var(--f-display);font-stretch:85%;font-weight:800;font-size:26px;color:var(--warn);grid-row:span 2;min-width:2.2ch;text-align:right}
 .obs h4{margin:0;font-size:15px}
 .obs p{margin:0;color:var(--ink2);font-size:14px}
+/* explorador del pedido (segmentación de datos) */
+.xs-bar{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin:0 0 4px}
+.xs-bar .limpiar{font:inherit;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border:1px solid var(--azul);border-radius:8px;background:var(--surface);color:var(--azul);cursor:pointer}
+.xs-bar .limpiar svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.xs-bar .limpiar:disabled{border-color:var(--rule);color:var(--muted);cursor:default}
+.xs-sel{margin:0;flex:1 1 260px}
+.xs-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:12px;margin-top:14px;align-items:start}
+.xs-col{display:grid;gap:12px;min-width:0}
+.panel.xs{padding:12px 12px 10px}
+.xs-h{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
+.xs-h h3{margin:0}
+.xs-q{font:inherit;font-size:12px;font-weight:600;padding:1px 9px;border:1px solid var(--rule);border-radius:999px;background:var(--surface);color:var(--azul);cursor:pointer}
+.xs-s{width:100%;margin-bottom:6px;font-size:13.5px}
+.xs-l{display:grid;gap:3px;max-height:330px;overflow:auto;padding-right:2px}
+.xs-la{max-height:420px}
+.xs-it{font:inherit;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:1px 8px;align-items:center;text-align:left;padding:5px 8px 6px;border:1px solid var(--rule);border-radius:7px;background:var(--surface);color:var(--ink);cursor:pointer}
+.xs-it:hover{border-color:var(--azul)}
+.xs-it[aria-pressed="true"]{background:var(--azul-soft);border-color:var(--azul);box-shadow:inset 3px 0 0 var(--azul)}
+.xs-it[aria-pressed="true"] .xs-n{font-weight:700}
+.xs-it.cero{opacity:.45;cursor:default}
+.xs-n{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.xs-n .sw{margin-right:6px}
+.xs-v{font-size:12.5px;color:var(--ink2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.xs-b{grid-column:1/-1;height:4px;background:var(--bg);border-radius:2px;overflow:hidden}
+.xs-b span{display:block;height:100%;border-radius:2px;opacity:.75}
+#xTab tr.xs-tot td{font-weight:700;border-top:2px solid var(--rule)}
+#xTab .sw{margin-right:6px}
+.xs-mas{font:inherit;font-size:13px;font-weight:600;margin-top:10px;padding:5px 12px;border:1px solid var(--azul);border-radius:8px;background:var(--surface);color:var(--azul);cursor:pointer}
 /* alertas sobre los envíos por UT/OCT */
 .utals{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:6px 16px 8px}
 .utals-h{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;justify-content:space-between;padding:6px 0}
@@ -389,8 +418,10 @@ h3.ut-t .uttag{margin-right:6px}
   <div class="wrap">
     <div class="tabs" role="tablist" aria-label="Vistas">
       <button type="button" role="tab" id="tbRes" aria-selected="true" aria-controls="vRes">Resumen</button>
-      <button type="button" role="tab" id="tbMen" aria-selected="false" aria-controls="vMen">Menú semanal</button>
       <button type="button" role="tab" id="tbEnv" aria-selected="false" aria-controls="vEnv">Envíos</button>
+      <button type="button" role="tab" id="tbMen" aria-selected="false" aria-controls="vMen">Menú<span class="tl"> semanal</span></button>
+      <button type="button" role="tab" id="tbAli" aria-selected="false" aria-controls="vAli">Alimentos</button>
+      <button type="button" role="tab" id="tbProv" aria-selected="false" aria-controls="vProv">Proveedores</button>
     </div>
     <span class="fgrp" title="Entre paréntesis, los envíos vigentes"><label for="fMes">Mes</label><select id="fMes"></select></span>
     <span class="fgrp" title="Entre paréntesis, los envíos vigentes de las UT/OCT de cada sectorista"><label for="fSEC">Sectorista</label><select id="fSEC"></select></span>
@@ -399,7 +430,7 @@ h3.ut-t .uttag{margin-right:6px}
     <span class="fgrp"><label for="fSAF">Servicio alimentario</label><select id="fSAF"></select></span>
     <button type="button" id="fLimpiar" class="limpiar" title="Quitar los filtros de sectorista, unidad territorial, comité y servicio (el mes se mantiene)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4-2v-4z"/><path d="M16 16l5 5M21 16l-5 5"/></svg>Limpiar filtros</button>
     <nav aria-label="Secciones" id="navRes">
-      <a href="#presupuesto">Presupuesto</a><a href="#alimentos">Alimentos</a><a href="#aporte">Aporte</a><a href="#calidad">Calidad</a><a href="#detalle">Detalle</a>
+      <a href="#presupuesto">Presupuesto</a><a href="#aporte">Aporte</a><a href="#calidad">Calidad</a><a href="#detalle">Detalle</a>
     </nav>
   </div>
 </div>
@@ -422,26 +453,6 @@ h3.ut-t .uttag{margin-right:6px}
         <h3 id="hNino">Costo por niña o niño y día de atención</h3>
         <p class="note">Costo de los alimentos para usuarios (lo pedido más el valor de los saldos de no perecibles que usa el menú) entre el número de niñas y niños del pedido no perecible y los días con menú programado. La línea marca la mediana.</p>
         <div id="cNino"></div>
-      </div>
-    </div>
-  </section>
-
-  <section id="alimentos">
-    <h2>Qué se está pidiendo</h2>
-    <p class="lede">Suma de los pedidos de todos los servicios alimentarios seleccionados.</p>
-    <div class="grid2">
-      <div class="panel">
-        <div style="display:flex;flex-wrap:wrap;gap:8px 14px;justify-content:space-between;align-items:center">
-          <h3>Los 15 alimentos con más peso en el pedido</h3>
-          <div class="seg" role="group" aria-label="Medida"><button type="button" id="mS" aria-pressed="true">Costo (S/)</button><button type="button" id="mK" aria-pressed="false">Volumen (kg o L)</button></div>
-        </div>
-        <div class="legend" style="margin-top:8px"><span><i class="sw" style="background:var(--azul)"></i>No perecible</span><span><i class="sw" style="background:var(--magenta)"></i>Perecible</span></div>
-        <div id="cFood"></div>
-      </div>
-      <div class="panel">
-        <h3>Costo por grupo de alimentos</h3>
-        <p class="note" id="npNote"></p>
-        <div id="cGrupo"></div>
       </div>
     </div>
   </section>
@@ -476,14 +487,6 @@ h3.ut-t .uttag{margin-right:6px}
       <h3>Distribución de las calorías por macronutriente</h3>
       <p class="note">Porcentaje de las calorías del menú del día (media mañana, almuerzo, fruta y media tarde) que viene de proteínas, grasas y carbohidratos, con los factores 4, 9 y 4 kcal por gramo. Promedio de todos los días con menú de los servicios seleccionados. No hay una norma peruana que fije esta distribución. En 12 a 23 meses se compara con el rango aceptable de distribución de macronutrientes para niñas y niños de 1 a 3 años de las Recomendaciones de Ingesta de Energía y Nutrientes (RIEN) de Colombia (Resolución 3803 de 2016 del Ministerio de Salud y Protección Social): proteínas 10 a 20 %, grasas 30 a 40 % y carbohidratos 50 a 65 %. En 24 a 36 meses, proteínas y carbohidratos usan el mismo rango de la RIEN, y grasas, el de 25 a 35 % que la consulta de expertos FAO/OMS sobre grasas y ácidos grasos en la nutrición humana (2010) recomienda desde los 2 años; en 6 a 11 meses es referencial, porque la leche materna aporta buena parte de la grasa del día. Un día queda fuera de rango si al menos un macronutriente sale del rango; no se cuenta como incumplimiento del aporte. Toque el número de días para ver los servicios y las fechas.</p>
       <div class="scroll"><table id="tMac"></table></div>
-    </div>
-  </section>
-
-  <section id="proveedores">
-    <h2>Proveedores</h2>
-    <div class="grid2">
-      <div class="panel"><h3>No perecibles</h3><p class="note">Servicios alimentarios atendidos por cada proveedor.</p><div id="cProvNP"></div></div>
-      <div class="panel"><h3>Perecibles</h3><p class="note">Servicios alimentarios atendidos por cada proveedor.</p><div id="cProvP"></div></div>
     </div>
   </section>
 
@@ -550,6 +553,68 @@ h3.ut-t .uttag{margin-right:6px}
     <div class="sheet scroll" id="sheet"></div>
     <div id="dzBox" hidden></div>
     <p class="note" id="sheetNote" style="margin-top:10px"></p>
+  </section>
+</div>
+<div id="vAli" role="tabpanel" aria-labelledby="tbAli" hidden>
+  <section id="pedido" style="margin-top:22px">
+    <h2>Qué se está pidiendo</h2>
+    <p class="lede">Suma de los pedidos (no perecibles y perecibles) de los servicios alimentarios seleccionados arriba.</p>
+    <div class="grid2">
+      <div class="panel">
+        <div style="display:flex;flex-wrap:wrap;gap:8px 14px;justify-content:space-between;align-items:center">
+          <h3>Los 15 alimentos con más peso en el pedido</h3>
+          <div class="seg" role="group" aria-label="Medida"><button type="button" id="mS" aria-pressed="true">Costo (S/)</button><button type="button" id="mK" aria-pressed="false">Volumen (kg o L)</button></div>
+        </div>
+        <div class="legend" style="margin-top:8px"><span><i class="sw" style="background:var(--azul)"></i>No perecible</span><span><i class="sw" style="background:var(--magenta)"></i>Perecible</span></div>
+        <div id="cFood"></div>
+      </div>
+      <div class="panel">
+        <h3>Costo por grupo de alimentos</h3>
+        <p class="note" id="npNote"></p>
+        <div id="cGrupo"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="explorador">
+    <h2>Explorador del pedido</h2>
+    <p class="lede">Toque una o varias opciones en cada segmentador para filtrar; los demás se ajustan solos a lo elegido. Trabaja sobre los servicios del filtro de arriba. Muestra el pedido vigente (sin el valor de los saldos usados); las cantidades suman kilos y litros.</p>
+    <div class="xs-bar">
+      <div class="seg" role="group" aria-label="Medida"><button type="button" id="xMetS" aria-pressed="true">Monto (S/)</button><button type="button" id="xMetK" aria-pressed="false">Cantidad (kg o L)</button></div>
+      <button type="button" id="xLimpiar" class="limpiar" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4-2v-4z"/><path d="M16 16l5 5M21 16l-5 5"/></svg>Limpiar segmentación</button>
+      <p class="note xs-sel" id="xSel"></p>
+    </div>
+    <div class="kpis kpis5" id="xKpi"></div>
+    <div class="xs-grid">
+      <div class="panel xs"><div class="xs-h"><h3>UT/OCT</h3><button type="button" class="xs-q" data-xq="ut" hidden>Quitar</button></div><div class="xs-l" id="xs_ut"></div></div>
+      <div class="xs-col">
+        <div class="panel xs"><div class="xs-h"><h3>Tipo de alimento</h3><button type="button" class="xs-q" data-xq="t" hidden>Quitar</button></div><div class="xs-l" id="xs_t"></div></div>
+        <div class="panel xs"><div class="xs-h"><h3>Grupo de alimentos</h3><button type="button" class="xs-q" data-xq="g" hidden>Quitar</button></div><div class="xs-l" id="xs_g"></div></div>
+      </div>
+      <div class="panel xs"><div class="xs-h"><h3>Alimento</h3><button type="button" class="xs-q" data-xq="a" hidden>Quitar</button></div>
+        <input type="search" id="xQ" class="xs-s" placeholder="Buscar alimento" aria-label="Buscar alimento"><div class="xs-l xs-la" id="xs_a"></div></div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <h3 id="xPrecioH">Precio pagado por kg o L</h3>
+      <p class="note" id="xPrecioN"></p>
+      <div id="xPrecio"></div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <h3>Detalle por alimento</h3>
+      <p class="note" id="xTabN"></p>
+      <div class="scroll"><table id="xTab" class="cmp"></table></div>
+      <button type="button" id="xMas" class="xs-mas" hidden></button>
+    </div>
+  </section>
+</div>
+<div id="vProv" role="tabpanel" aria-labelledby="tbProv" hidden>
+  <section id="provs" style="margin-top:22px">
+    <h2>Proveedores</h2>
+    <p class="lede">Proveedores adjudicados a los comités de gestión de los servicios con envío vigente, según los resultados de adquisición de alimentos 2026.</p>
+    <div class="grid2">
+      <div class="panel"><h3>No perecibles</h3><p class="note">Servicios alimentarios atendidos por cada proveedor.</p><div id="cProvNP"></div></div>
+      <div class="panel"><h3>Perecibles</h3><p class="note">Servicios alimentarios atendidos por cada proveedor.</p><div id="cProvP"></div></div>
+    </div>
   </section>
 </div>
   <p class="foot" id="foot"></p>

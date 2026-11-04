@@ -530,7 +530,11 @@ function calidad(){
   // El envío vigente se decide por el CUI del padrón, así que los envíos repetidos con CUI equivocado se descartan y el servicio
   // cuyo CUI fue usado por otro recupera su propio envío.
   const selCui = new Set(S.map(s=>s.cui)), fh = f=>f.slice(8,10)+'/'+f.slice(5,7)+' '+f.slice(11,16);
-  const cuiMal = S.filter(s=>s.cuiSug), desc = (D.descartados||[]).filter(d=>selCui.has(d[1])), resc = S.filter(s=>s.rescatado);
+  // No se alertan los envíos ya corregidos con un reenvío: el envío que llegó con un CUI equivocado y luego se reenvió con el correcto
+  // (descartado), ni el servicio que recupera su envío porque el otro servicio que usó su CUI ya lo corrigió (rescatado con descartado).
+  // Sí se alerta el rescatado cuyo CUI sigue usando otro servicio en su envío vigente (ese otro figura en cuiMal).
+  const corregidos = new Set((D.descartados||[]).map(d=>String(d[0])));
+  const cuiMal = S.filter(s=>s.cuiSug), desc = [], resc = S.filter(s=>s.rescatado && !corregidos.has(String(s.cui)));
   const partes = [], porUTe = [];   // porUTe: alertas de envío por UT/OCT {ut, t: 'cui'|'fuera', h}
   const utDeS = s => s.ut || s.utEnv || 'Sin UT/OCT';
   const cgTxt = s => 'CG '+esc(s.cg)+(s.ut && s.utEnv && nUT(s.ut)!==nUT(s.utEnv) ? '; registrado como '+esc(s.utEnv) : '');

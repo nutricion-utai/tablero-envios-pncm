@@ -33,7 +33,7 @@ function estadoOk() {
     '<b>' + u.sa.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])) + '</b> (' + u.ut.replace(/[&<>"]/g, '') + '), ' + hhmm(u.t) + ' h · el tablero se actualiza en un momento</span>';
 }
 // pestañas: vista visible y su dirección (#…), para conservarlas al actualizar en vivo o al cambiar de mes
-const VIS = { res: ['#vRes', '#resumen'], env: ['#vEnv', '#envios'], menu: ['#vMen', '#menu-semanal'], ali: ['#vAli', '#alimentos'], prov: ['#vProv', '#proveedores'] };
+const VIS = { res: ['#vRes', '#resumen'], env: ['#vEnv', '#envios'], menu: ['#vMen', '#menu-semanal'], div: ['#vDiv', '#diversidad'], ali: ['#vAli', '#alimentos'], prov: ['#vProv', '#proveedores'] };
 const vistaAct = () => { for (const [k, [v]] of Object.entries(VIS)) { const e = $(v); if (e && !e.hidden) return k; } return 'res'; };
 const hashDe = v => (VIS[v] || VIS.res)[1];
 
@@ -87,6 +87,9 @@ function suscribirMes(p, conservarVista) {
     if (n === nSus && montado) programar(true); }, () => {}));
   subs.push(onSnapshot(collection(db, 'periodos', p, 'ut'), qs => { const m = new Map(); qs.forEach(d => m.set(d.id, d.data().d)); uts = m; listo(); }, err => estado('No se pudo leer la base de datos: ' + err.message)));
 }
+
+/* datos generales (meta) de otro mes, para comparar meses en la pestaña Diversidad: una lectura por mes */
+window.__metaMes = p => getDoc(doc(db, 'periodos', p)).then(sn => sn.exists() ? JSON.parse(sn.data().d) : null);
 
 window.__cambiarMes = p => {
   if (!(p in window.__ENVVIG)) return;

@@ -1693,17 +1693,18 @@ $('#wNext').onclick = ()=>{ const s=semanasDe(SA); const i=s.findIndex(w=>w.s===
 $('#wHoy').onclick = ()=>{ SEM=semanaEnCurso(semanasDe(SA)); llenarSem(true); hoja(); };
 
 // pestañas
-// vistas: Resumen, Envíos, Menú semanal, Alimentos y Proveedores
-const VISTAS = {res:['#vRes','#tbRes','#resumen'], env:['#vEnv','#tbEnv','#envios'], menu:['#vMen','#tbMen','#menu-semanal'], ali:['#vAli','#tbAli','#alimentos'], prov:['#vProv','#tbProv','#proveedores']};
+// vistas: Resumen, Envíos, Menú semanal, Diversidad, Alimentos y Proveedores
+const VISTAS = {res:['#vRes','#tbRes','#resumen'], env:['#vEnv','#tbEnv','#envios'], menu:['#vMen','#tbMen','#menu-semanal'], div:['#vDiv','#tbDiv','#diversidad'], ali:['#vAli','#tbAli','#alimentos'], prov:['#vProv','#tbProv','#proveedores']};
 function tab(which){
   if(!VISTAS[which]) which='res';
   Object.entries(VISTAS).forEach(([k,[v,b]])=>{ $(v).hidden = k!==which; $(b).setAttribute('aria-selected', String(k===which)); });
   $('#navRes').hidden = which!=='res';
   try{ history.replaceState(null,'', VISTAS[which][2]); }catch(_){}
   if(which==='menu') menuSemanal(true);
+  if(which==='div') diversidad();
   window.scrollTo(0,0);
 }
-$('#tbRes').onclick = ()=>tab('res'); $('#tbMen').onclick = ()=>tab('menu'); $('#tbEnv').onclick = ()=>tab('env'); $('#tbAli').onclick = ()=>tab('ali'); $('#tbProv').onclick = ()=>tab('prov');
+$('#tbRes').onclick = ()=>tab('res'); $('#tbMen').onclick = ()=>tab('menu'); $('#tbEnv').onclick = ()=>tab('env'); $('#tbAli').onclick = ()=>tab('ali'); $('#tbProv').onclick = ()=>tab('prov'); $('#tbDiv').onclick = ()=>tab('div');
 // abrir el menú de un servicio desde el detalle
 window.__verMenu = (cui, sem, op) => { FOCO = op ? Object.assign({cui}, op) : null; SA = cui; const s0=byCui[cui]; if(s0 && !sel().includes(s0)){ SEC=''; UT='TODAS'; CG=''; SAF=''; $('#fUT').value=UT; llenarFiltros(); render(); } if(sem){ SEM = sem; } tab('menu'); if(sem){ SEM = sem; if(op && op.f){ DIA = (pd(op.f).getDay()+6)%7; DIAkey = cui+'|'+sem; } llenarSem(true); hoja(); }
   if(op && op.f){ requestAnimationFrame(()=>{ const sh=$('#sheet'); const th=sh.querySelector('th.fo'); const top=sh.getBoundingClientRect().top+window.scrollY-70; window.scrollTo(0, Math.max(0,top));
@@ -1717,7 +1718,7 @@ let rzT; window.addEventListener('resize', ()=>{ clearTimeout(rzT); rzT=setTimeo
 function titulosUT(){
   const tag = UT==='TODAS' ? (SEC ? ' · UT/OCT de '+secNom() : '') : ' · '+UT+(CG?' · CG '+CG:'')+(SAF?' · '+(byCui[SAF]||{}).sa:'');
   const hu = document.querySelector('#hUT'); if (hu) hu.textContent = tag;
-  document.querySelectorAll('#vRes section > h2, #vEnv section > h2, #vAli section > h2, #vProv section > h2, h3.ut-t, #nutHead').forEach(h=>{
+  document.querySelectorAll('#vRes section > h2, #vEnv section > h2, #vDiv section > h2, #vAli section > h2, #vProv section > h2, h3.ut-t, #nutHead').forEach(h=>{
     h.querySelectorAll('.uttag').forEach(x=>x.remove());
     if (!tag) return;
     const t = document.createElement('span'); t.className='uttag'; t.textContent = tag;
@@ -1753,8 +1754,8 @@ const slugPNG = t => String(t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLow
 const ICO_PNG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>';
 function botonesPNG(){
   const fila = () => { const d = document.createElement('div'); d.className = 'pngfila'; d.innerHTML = '<button type="button" class="pngbtn" title="Descargar como imagen PNG">'+ICO_PNG+'PNG</button>'; return d; };
-  document.querySelectorAll('#vRes .panel, #vEnv .panel, #vAli .panel, #vProv .panel').forEach(p=>{
-    if (p.dataset.png || !p.querySelector('table, #cEjec, #cNino, #cFood, #cGrupo, #cMacG, #cProvNP, #cProvP, #cDia, #xPrecio')) return;
+  document.querySelectorAll('#vRes .panel, #vEnv .panel, #vDiv .panel, #vAli .panel, #vProv .panel').forEach(p=>{
+    if (p.dataset.png || !p.querySelector('table, #cEjec, #cNino, #cFood, #cGrupo, #cMacG, #cProvNP, #cProvP, #cDia, #xPrecio, #dvDist, #dvPres')) return;
     p.dataset.png = '1'; const f = fila();
     if (p.classList.contains('scroll')){ f._panel = p; p.after(f); } else p.appendChild(f);   // en un panel con desplazamiento, el botón va debajo
   });
@@ -1820,12 +1821,291 @@ botonesPNG();
 on('click', e=>{ const b = e.target.closest('[data-utals]'); if (!b) return; (b.closest('.utals')||document).querySelectorAll('details.utal').forEach(d=>{ d.open = b.dataset.utals==='1'; }); });
 on('click', e=>{ const b = e.target.closest('.pngbtn'); if (b){ e.preventDefault(); exportarPNG(b); } });
 
-function render(){ titulosUT(); kpis(); coberturaNut(); avance(); porDia(); ultimos(); calidad(); ejec(); nino(); foods(); alertasAporte(); resumenCob(); resumenMacro(); graficoMacro(); alertasMacro(); prov(); explorar(); detalle(); if(!$('#vMen').hidden) menuSemanal(true); }
+// ================= DIVERSIDAD DEL MENÚ (pestaña Diversidad, desde el 04/11/2026) =================
+// Puntaje diario: grupos de alimentos (de 7) que tiene el menú del día de cada grupo de edad; cálculo en diversidad.js (el mismo
+// bloque está en Motor.gs). Promedios: en la UT/OCT y en el total nacional cada servicio pesa igual; dentro de un servicio, cada
+// grupo de edad pesa según sus niñas y niños. En lo que se comparte con las UT/OCT van cifras, sin calificativos entre unidades.
+const DVM = window.Diversidad;
+let dvT = 1, dvEd = '', dvOrdK = 'prom', dvOrdD = -1, dvSaK = 'prom', dvSaD = -1, dvMesM = 'p', dvSA = null, dvDia = null, dvMasN = 60;
+try { const t = localStorage.getItem('envios_dvT'); if (t!==null && /^[012]$/.test(t)) dvT = +t; const e = localStorage.getItem('envios_dvEd'); if (e!==null && /^[0-3]?$/.test(e)) dvEd = e; } catch(_) {}
+Object.assign(ICO_TARJ, {'puntaje promedio':'pct', 'rango diario':'dia', 'menús con 5 o más grupos':'meta', 'alimentos distintos por semana':'kcal', 'servicios evaluados':'sa'});
+const dvEdad = () => dvEd==='' ? null : +dvEd;
+const dvMemo = {};
+const dvDe = (s, ed) => { const e = ed===undefined ? dvEdad() : ed, k = s.cui+'|'+dvT+'|'+e;
+  if (!(k in dvMemo)) dvMemo[k] = (DVM && s.dv) ? DVM.servicio(s.dv, s.u, dvT, e) : null; return dvMemo[k]; };
+const dvF = v => v==null ? '—' : nf2.format(v);
+const dvV = v => v==null ? '—' : nf1.format(v);
+const dvP = v => v==null ? '—' : nf1.format(v*100)+' %';
+const dvDif = (v, r, nd) => { if (v==null || r==null) return '—'; const f = nd===1 ? 10 : 100, d = Math.round((v-r)*f)/f; return (d>0?'+':d<0?'−':'')+(nd===1?nf1:nf2).format(Math.abs(d)); };
+const DV_GRC = ['dv-g0','dv-g1','dv-g2','dv-g3','dv-g4','dv-g5','dv-g6'];
+const DV_TIEMPO = {0:'Media mañana', 1:'Almuerzo', 2:'Almuerzo', 3:'Media tarde', 4:'Fruta'};
+const dvDiaTxt = f => { const d = new Date(f+'T12:00:00'); return ['dom','lun','mar','mié','jue','vie','sáb'][d.getDay()]+' '+f.slice(8,10)+'/'+f.slice(5,7); };
+const dvBar = (v, ref, max) => '<div class="dvbar"><div class="tr"><span style="width:'+(v==null?0:Math.max(0,Math.min(100,v/max*100)))+'%"></span>'+
+  (ref!=null?'<i style="left:'+Math.min(100,ref/max*100)+'%" title="Nacional: '+esc(dvF(ref))+'"></i>':'')+'</div><b>'+dvF(v)+'</b></div>';
+// barras horizontales con referencia propia en cada fila (rows: {nm, v, txt, sub, cls, ref, tip})
+function dvBarras(el, rows, max){
+  el.className = 'dv-b';
+  el.innerHTML = rows.map(r=>'<div class="nm '+(r.cls||'')+'" title="'+esc(r.title||'')+'">'+r.nm+'</div>'+
+    '<div class="tr '+(r.cls||'')+'"'+(r.tip?' data-tip="'+esc(r.tip)+'"':'')+'><span class="fi" style="width:'+Math.max(0,Math.min(100,r.v/max*100))+'%;'+(r.color?'background:'+r.color:'')+'"></span>'+
+      (r.ref!=null?'<i class="ref" style="left:'+Math.min(100,r.ref/max*100)+'%"></i>':'')+'</div>'+
+    '<div class="v">'+r.txt+(r.sub?'<small>'+r.sub+'</small>':'')+'</div>').join('') || '<p class="note">Sin datos para esta selección.</p>';
+}
+// metas de otros meses (para comparar): se leen una vez
+const DVMETA = window.__DVMETA || (window.__DVMETA = {});
+function dvMeta(p){   // los datos de otro mes se vuelven a leer si tienen más de 10 minutos
+  if (p===D.periodo) return null;
+  const o = DVMETA[p], viejo = o && o.t && Date.now()-o.t > 600000;
+  if (o && o.t && !viejo) return o.m;
+  if ((!o || viejo) && typeof window.__metaMes==='function'){
+    DVMETA[p] = {cargando: 1, m: o && o.m};
+    window.__metaMes(p).then(m=>{ DVMETA[p] = {t: Date.now(), m: m || {}}; if (!$('#vDiv').hidden) dvMeses(); })
+      .catch(()=>{ DVMETA[p] = {t: Date.now(), m: {}}; });
+  }
+  return DVMETA[p].m || undefined;   // undefined: cargando
+}
+// servicios esperados de la selección (mismo criterio de la tarjeta «Servicios con envío vigente»)
+function dvEsperados(L){
+  const nFuera = L.filter(s=>!s.padron).length, sPad = SAF ? ((byCui[SAF]||{}).cuiPad||SAF) : null;
+  return (UT==='TODAS' ? (SEC ? sum(Object.keys(D.padUT).filter(enSec).map(u=>D.padUT[u])) : D.padTotal)
+    : (CG||SAF) ? PADF().filter(p=>p[0]===UT && (!CG || nCG(p[3])===CG) && (!SAF || String(p[1])===String(sPad))).length : (D.padUT[UT]||0)) + nFuera;
+}
+const dvHayFiltro = () => UT!=='TODAS' || !!SEC || !!CG || !!SAF;
+
+function diversidad(){
+  const vista = $('#vDiv'); if (!vista || vista.hidden) return;   // se dibuja solo con la pestaña a la vista
+  $('#dvT').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed', String(+b.dataset.t===dvT)));
+  $('#dvEd').innerHTML = '<option value="">Todos (6 a 36 meses)</option>'+DVM.EDADES.map((e,i)=>'<option value="'+i+'">'+e+'</option>').join('');
+  $('#dvEd').value = dvEd;
+  const L = sel(), conDv = D.sa.filter(s=>s.dv).length;
+  const av = $('#dvAviso');
+  if (!conDv){ av.hidden = false; av.textContent = 'La diversidad del menú de '+mesTxt(D.periodo)+' todavía no está publicada. Aparecerá aquí en cuanto el tablero la calcule.'; }
+  else if (conDv < D.sa.length){ av.hidden = false; av.textContent = (D.sa.length-conDv)+' de '+D.sa.length+' servicios alimentarios todavía no tienen la diversidad calculada; se completan solos en unos minutos.'; }
+  else av.hidden = true;
+  const A = DVM.agregar(L.map(s=>dvDe(s))), N = DVM.agregar(D.sa.map(s=>dvDe(s))), hf = dvHayFiltro();
+  dvKpis(A, N, L, hf); dvDist(A); dvPres(A, N, hf); dvVar(A, N, hf); dvUTs(N); dvEdades(L, hf); dvMeses(); dvServicios(L, N); dvDetalle(); dvMetodo();
+}
+function dvKpis(A, N, L, hf){
+  const edTxt = dvEd==='' ? '' : ' · '+DVM.EDADES[+dvEd];
+  const nac = (v, f) => hf && N && v!=null ? '<span class="dirn">Nacional: '+f(v)+'</span>' : '';
+  const nin = sum(L.filter(s=>dvDe(s)).map(s=>dvEd==='' ? s.ninos : (s.u[+dvEd]||0)));
+  const tiles = A ? [
+    ['Puntaje promedio', dvF(A.prom), 'de 7 grupos · promedio de los servicios'+edTxt+nac(N&&N.prom, dvF),
+      'Promedio del puntaje diario (grupos de alimentos del menú del día, de 0 a 7). Cada servicio alimentario pesa igual; dentro de un servicio, cada grupo de edad pesa según sus niñas y niños.'],
+    ['Rango diario', A.min+' a '+A.max, 'puntaje del menú diario más bajo y más alto'+(hf&&N?'<span class="dirn">Nacional: '+N.min+' a '+N.max+'</span>':''),
+      'Puntaje más bajo y más alto entre todos los menús diarios (servicio, día y grupo de edad) de la selección.'],
+    ['Menús con 5 o más grupos', dvP(A.p5), 'referencia de la diversidad alimentaria mínima OMS/UNICEF'+nac(N&&N.p5, dvP),
+      'Porcentaje de menús diarios con 5 o más de los 7 grupos, como la diversidad alimentaria mínima de OMS/UNICEF (2021). Promedio de los servicios.'],
+    ['Alimentos distintos por semana', dvV(A.vprom), A.vprom!=null ? 'de '+A.vmin+' a '+A.vmax+' en una semana'+nac(N&&N.vprom, dvV) : 'sin semanas de 4 días o más',
+      'Alimentos distintos de los 7 grupos en una semana de atención (4 días o más). Promedio de los servicios; debajo, la semana con menos y con más alimentos distintos.'],
+    ['Servicios evaluados', nf0.format(A.n), 'de '+nf0.format(dvEsperados(L))+' esperados · '+nf0.format(nin)+' niñas y niños', 'Servicios alimentarios con envío vigente y menú programado para el mes.']
+  ] : [['Puntaje promedio','—','sin menús con datos de diversidad en esta selección','']];
+  $('#dvKpi').innerHTML = tiles.map(t=>'<div class="kpi"'+(t[3]?' data-tip="'+esc(t[3])+'"':'')+'>'+labI(t[0])+'<span class="val">'+t[1]+'</span><span class="sub">'+t[2]+'</span></div>').join('');
+}
+function dvDist(A){
+  const el = $('#dvDist');
+  if (!A){ el.className=''; el.innerHTML = '<p class="note">Sin datos para esta selección.</p>'; $('#dvDistN').textContent=''; return; }
+  const tot = sum(A.dist), lo = Math.min(4, A.min);
+  const rows = []; for (let p=7; p>=lo; p--) rows.push({nm: p+(p===1?' grupo':' grupos'), v: tot? A.dist[p]/tot : 0, txt: nf1.format(tot? A.dist[p]/tot*100 : 0)+' %', sub: nf0.format(A.dist[p])+' menús',
+    color: p>=5 ? 'var(--azul)' : 'var(--muted)'});
+  dvBarras(el, rows, Math.max(...rows.map(r=>r.v), 1e-9));
+  $('#dvDistN').textContent = nf0.format(tot)+' menús diarios (servicio, día y grupo de edad). En azul, los de 5 o más grupos.';
+}
+function dvPres(A, N, hf){
+  const el = $('#dvPres');
+  if (!A){ el.className=''; el.innerHTML = '<p class="note">Sin datos para esta selección.</p>'; $('#dvPresN').textContent=''; $('#dvPresR').hidden = true; return; }
+  dvBarras(el, DVM.GRUPOS.map((g,j)=>({nm:'<i class="sw"></i>'+esc(g), title:g, cls:DV_GRC[j], v:A.pres[j], txt:dvP(A.pres[j]), ref: hf&&N ? N.pres[j] : null,
+    tip: hf&&N ? 'Nacional: '+dvP(N.pres[j]) : ''})), 1);
+  $('#dvPresN').textContent = 'Porcentaje de los menús diarios que incluyen cada grupo (promedio de los servicios).';
+  $('#dvPresR').hidden = !(hf && N);
+}
+function dvVar(A, N, hf){
+  const t = $('#dvVar');
+  if (!A || A.vprom==null){ t.innerHTML = '<tbody><tr><td>Sin semanas de 4 días o más en esta selección.</td></tr></tbody>'; $('#dvVarN').textContent=''; return; }
+  const col = hf && N && N.vprom!=null;
+  t.innerHTML = '<thead><tr><th>Grupo de alimentos</th><th class="n">'+(hf?'Selección':'Nacional')+'</th>'+(col?'<th class="n">Nacional</th><th class="n">Diferencia</th>':'')+'</tr></thead><tbody>'+
+    DVM.GRUPOS.map((g,j)=>'<tr><td class="'+DV_GRC[j]+'"><span class="dv-leg" style="margin:0"><span><i class="sw" style="background:var(--gc)"></i>'+esc(g)+'</span></span></td><td class="n">'+dvV(A.vg[j])+'</td>'+
+      (col?'<td class="n">'+dvV(N.vg[j])+'</td><td class="n dif">'+dvDif(A.vg[j], N.vg[j], 1)+'</td>':'')+'</tr>').join('')+
+    '<tr class="nac"><td>Total de alimentos distintos<span class="sub2">semana con menos y con más: '+A.vmin+' y '+A.vmax+'</span></td><td class="n">'+dvV(A.vprom)+'</td>'+
+      (col?'<td class="n">'+dvV(N.vprom)+'</td><td class="n dif">'+dvDif(A.vprom, N.vprom, 1)+'</td>':'')+'</tr></tbody>';
+  $('#dvVarN').textContent = 'Promedio por semana de los servicios (cada uno pesa igual); '+nf0.format(A.nv)+' servicios con semanas de 4 días o más.';
+}
+// comparativa por UT/OCT: todas las de la selección de sectorista, ordenadas; arriba, el valor nacional
+const DV_UT_COLS = [['ut','UT/OCT'],['n','Servicios',1],['prom','Puntaje promedio',1],['min','Mínimo',1],['max','Máximo',1],['dif','Diferencia con el nacional',1],['p5','Menús con 5 o más grupos',1],['vprom','Alimentos distintos por semana',1]];
+function dvUTs(N){
+  const t = $('#dvUT'), por = {};
+  D.sa.forEach(s=>{ (por[s.ut] || (por[s.ut] = [])).push(dvDe(s)); });
+  const esp = {}; filasAvance().rows.forEach(r=>{ esp[r.u] = r.e; });
+  let rows = Object.keys(por).filter(enSec).map(u=>Object.assign({ut:u, e:esp[u]||por[u].length}, DVM.agregar(por[u]) || {n:0}));
+  const val = {ut:r=>r.ut, n:r=>r.n, prom:r=>r.prom, min:r=>r.min, max:r=>r.max, dif:r=>r.prom, p5:r=>r.p5, vprom:r=>r.vprom}[dvOrdK] || (r=>r.prom);
+  rows.sort((a,b)=>{ const x=val(a), y=val(b);
+    if (x==null || y==null) return x==null && y==null ? a.ut.localeCompare(b.ut,'es') : x==null ? 1 : -1;
+    const c = dvOrdK==='ut' ? x.localeCompare(y,'es') : (x>y?1:x<y?-1:0);
+    return c ? c*dvOrdD : ((b.prom||0)-(a.prom||0) || a.ut.localeCompare(b.ut,'es')); });
+  const ordTxt = {ut:'UT/OCT', n:'servicios', prom:'puntaje promedio', min:'mínimo', max:'máximo', dif:'diferencia con el nacional', p5:'menús con 5 o más grupos', vprom:'alimentos distintos por semana'}[dvOrdK];
+  $('#dvUtL').textContent = 'Cada UT/OCT con el promedio de sus servicios'+(dvEd===''?'':' ('+DVM.EDADES[+dvEd]+')')+', ordenadas por '+ordTxt+(dvOrdD<0?' de mayor a menor':' de menor a mayor')+
+    '. La primera fila es el valor nacional; la línea punteada de cada barra también lo marca. Toque un encabezado para ordenar y el nombre de una UT/OCT para filtrarla.'+(SEC?' Se muestran las UT/OCT de '+secNom()+'.':'');
+  const fila = (r, i) => '<tr'+(UT===r.ut?' class="act"':'')+'><td class="n nro">'+i+'</td><td><a href="#" class="salink" data-ut="'+esc(UT===r.ut?'TODAS':r.ut)+'" title="'+(UT===r.ut?'Quitar el filtro de UT':'Filtrar por '+esc(r.ut))+'">'+esc(r.ut)+'</a></td>'+
+    '<td class="n">'+r.n+'<span class="sub2">de '+r.e+' esperados</span></td><td>'+(r.n?dvBar(r.prom, N?N.prom:null, 7):'—')+'</td><td class="n">'+(r.n?r.min:'—')+'</td><td class="n">'+(r.n?r.max:'—')+'</td>'+
+    '<td class="n dif">'+(r.n?dvDif(r.prom, N&&N.prom):'—')+'</td><td class="n">'+(r.n?dvP(r.p5):'—')+'</td><td class="n">'+(r.n?dvV(r.vprom):'—')+'</td></tr>';
+  t.innerHTML = '<thead><tr><th class="n nro">N°</th>'+DV_UT_COLS.map(c=>'<th class="sort'+(c[2]?' n':'')+'" tabindex="0" data-dvk="'+c[0]+'" aria-sort="'+(dvOrdK===c[0]?(dvOrdD>0?'ascending':'descending'):'none')+'" title="Ordenar por '+c[1].toLowerCase()+'">'+c[1]+'</th>').join('')+'</tr></thead><tbody>'+
+    (N ? '<tr class="nac"><td></td><td>Nacional</td><td class="n">'+N.n+'<span class="sub2">de '+nf0.format(D.padTotal+D.sa.filter(s=>!s.padron).length)+' esperados</span></td><td>'+dvBar(N.prom, null, 7)+'</td><td class="n">'+N.min+'</td><td class="n">'+N.max+'</td><td class="n dif">—</td><td class="n">'+dvP(N.p5)+'</td><td class="n">'+dvV(N.vprom)+'</td></tr>' : '')+
+    rows.map((r,i)=>fila(r,i+1)).join('')+'</tbody>';
+}
+function dvEdades(L, hf){
+  const t = $('#dvEdT');
+  const filas = [null,0,1,2,3].map(ed=>({ed, A:DVM.agregar(L.map(s=>dvDe(s, ed))), N:hf?DVM.agregar(D.sa.map(s=>dvDe(s, ed))):null}));
+  $('#dvEdL').textContent = 'Resultado de cada grupo de edad '+(hf?'en la selección y a nivel nacional':'a nivel nacional')+', con todos los grupos de edad aunque arriba se haya elegido uno. Cada servicio pesa igual.';
+  t.innerHTML = '<thead><tr><th>Grupo de edad</th><th class="n">Servicios</th><th class="n">Puntaje promedio</th>'+(hf?'<th class="n">Nacional</th><th class="n">Diferencia</th>':'')+
+    '<th class="n">Mínimo</th><th class="n">Máximo</th><th class="n">Menús con 5 o más grupos</th><th class="n">Alimentos distintos por semana</th></tr></thead><tbody>'+
+    filas.map(({ed,A,N})=>'<tr'+(ed===null?' class="nac"':(dvEd!==''&&+dvEd===ed?' class="act"':''))+'><td>'+(ed===null?'Todos (6 a 36 meses)':DVM.EDADES[ed])+'</td>'+
+      (A ? '<td class="n">'+A.n+'</td><td>'+dvBar(A.prom, hf&&N?N.prom:null, 7)+'</td>'+(hf?'<td class="n">'+dvF(N&&N.prom)+'</td><td class="n dif">'+dvDif(A.prom, N&&N.prom)+'</td>':'')+
+           '<td class="n">'+A.min+'</td><td class="n">'+A.max+'</td><td class="n">'+dvP(A.p5)+'</td><td class="n">'+dvV(A.vprom)+'</td>'
+         : '<td class="n">0</td><td colspan="'+(hf?7:5)+'" style="color:var(--muted)">Sin niñas ni niños de esta edad en la selección</td>')+'</tr>').join('')+'</tbody>';
+}
+// entre meses: el mes elegido se calcula con sus datos; los demás, con el resumen publicado de cada mes (meta.dvr)
+function dvMeses(){
+  const t = $('#dvMes'); if (!t) return;
+  $('#dvMesM').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed', String(b.dataset.m===dvMesM)));
+  const meses = (window.__MESES||[D.periodo]).slice().sort();
+  const k = dvT*5 + (dvEd===''?0:+dvEd+1);
+  const celdas = {};   // {mes: {UT: [servicios, suma puntajes, suma %5, servicios con variedad, suma variedad]} | null (sin datos) | undefined (cargando)}
+  meses.forEach(p=>{
+    if (p===D.periodo){ const o = {}; D.sa.forEach(s=>{ const x = dvDe(s); if (!x) return; const c = o[s.ut] || (o[s.ut] = [0,0,0,0,0]); c[0]++; c[1]+=x.prom; c[2]+=x.p5; if (x.vprom!=null){ c[3]++; c[4]+=x.vprom; } }); celdas[p] = Object.keys(o).length ? o : null; return; }
+    const m = dvMeta(p);
+    if (m===undefined){ celdas[p] = undefined; return; }
+    const R = m && m.dvr && m.dvr.ut; if (!R){ celdas[p] = null; return; }
+    const o = {}; Object.keys(R).forEach(u=>{ const c = R[u][k]; if (c && c[0]) o[u] = c; }); celdas[p] = o;
+  });
+  const uts = [...new Set(meses.flatMap(p=>celdas[p]?Object.keys(celdas[p]):[]))].filter(enSec).sort((a,b)=>a.localeCompare(b,'es'));
+  const valor = c => !c ? null : dvMesM==='p' ? (c[0]?c[1]/c[0]:null) : (c[3]?c[4]/c[3]:null);
+  const fmt = v => v==null ? '—' : dvMesM==='p' ? dvF(v) : dvV(v);
+  const nacional = p => { const o = celdas[p]; if (!o) return null; const c = [0,0,0,0,0]; Object.keys(o).forEach(u=>o[u].forEach((x,i)=>{ c[i]+=x; })); return c; };
+  const celda = (p, c) => celdas[p]===undefined ? '<td class="mesv" style="color:var(--muted)">…</td>' : '<td class="mesv"'+(c?' title="'+c[0]+' servicios"':'')+'>'+fmt(valor(c))+(c?'<span class="sub2">'+c[0]+' serv.</span>':'')+'</td>';
+  $('#dvMesL').textContent = (dvMesM==='p'?'Puntaje promedio':'Alimentos distintos por semana')+' de cada mes, con los mismos gramos y grupo de edad elegidos arriba. Cada servicio pesa igual. '+
+    (CG||SAF ? 'Con un comité o servicio elegido, la comparación se muestra por UT/OCT. ' : '')+'Los meses sin cifras todavía no tienen la diversidad publicada.';
+  t.innerHTML = '<thead><tr><th>UT/OCT</th>'+meses.map(p=>'<th class="n">'+mesTxt(p).replace(/^./,c=>c.toUpperCase())+'</th>').join('')+'</tr></thead><tbody>'+
+    '<tr class="nac"><td>Nacional</td>'+meses.map(p=>celda(p, nacional(p))).join('')+'</tr>'+
+    uts.map(u=>'<tr'+(UT===u?' class="act"':'')+'><td><a href="#" class="salink" data-ut="'+esc(UT===u?'TODAS':u)+'">'+esc(u)+'</a></td>'+meses.map(p=>celda(p, celdas[p] && celdas[p][u])).join('')+'</tr>').join('')+'</tbody>';
+}
+// servicios de la selección
+const DV_SA_COLS = [['sa','Servicio alimentario'],['ut','UT/OCT'],['ninos','Niñas y niños',1],['prom','Puntaje promedio',1],['min','Mínimo',1],['max','Máximo',1],['p5','Menús con 5 o más grupos',1],['vprom','Alimentos distintos por semana',1]];
+function dvServicios(L, N){
+  const t = $('#dvSA'), cols = DV_SA_COLS.filter(c=>c[0]!=='ut' || UT==='TODAS');
+  const rows = L.map(s=>({s, x:dvDe(s)})).filter(r=>r.x);
+  const val = {sa:r=>r.s.sa, ut:r=>r.s.ut, ninos:r=>r.s.ninos, prom:r=>r.x.prom, min:r=>r.x.min, max:r=>r.x.max, p5:r=>r.x.p5, vprom:r=>r.x.vprom}[dvSaK] || (r=>r.x.prom);
+  rows.sort((a,b)=>{ const x=val(a), y=val(b);
+    if (x==null || y==null) return x==null && y==null ? 0 : x==null ? 1 : -1;
+    const c = (dvSaK==='sa'||dvSaK==='ut') ? x.localeCompare(y,'es') : (x>y?1:x<y?-1:0);
+    return c ? c*dvSaD : (b.x.prom-a.x.prom || a.s.sa.localeCompare(b.s.sa,'es')); });
+  $('#dvSaL').textContent = rows.length ? 'Servicios alimentarios de la selección con su puntaje promedio, el más bajo y el más alto del mes. La línea punteada marca el valor nacional. Toque el nombre de un servicio para ver su calendario de grupos por día y edad.' : '';
+  const ver = rows.slice(0, dvMasN);
+  t.innerHTML = rows.length ? '<thead><tr><th class="n nro">N°</th>'+cols.map(c=>'<th class="sort'+(c[2]?' n':'')+'" tabindex="0" data-dvs="'+c[0]+'" aria-sort="'+(dvSaK===c[0]?(dvSaD>0?'ascending':'descending'):'none')+'" title="Ordenar por '+c[1].toLowerCase()+'">'+c[1]+'</th>').join('')+'</tr></thead><tbody>'+
+    ver.map((r,i)=>'<tr'+(dvSA===r.s.cui?' class="act"':'')+'><td class="n nro">'+(i+1)+'</td><td><a href="#dv-servicios" class="dvsa" data-dvsa="'+r.s.cui+'">'+esc(r.s.sa)+'</a><span class="sub2">CG '+esc(r.s.cg)+'</span></td>'+
+      (UT==='TODAS'?'<td>'+esc(r.s.ut)+'</td>':'')+'<td class="n">'+nf0.format(dvEd===''?r.s.ninos:(r.s.u[+dvEd]||0))+'</td><td>'+dvBar(r.x.prom, N?N.prom:null, 7)+'</td><td class="n">'+r.x.min+'</td><td class="n">'+r.x.max+'</td><td class="n">'+dvP(r.x.p5)+'</td><td class="n">'+dvV(r.x.vprom)+'</td></tr>').join('')+'</tbody>'
+    : '<tbody><tr><td>Sin servicios con datos de diversidad en esta selección.</td></tr></tbody>';
+  const b = $('#dvMas'); b.hidden = rows.length <= dvMasN; b.textContent = 'Ver '+Math.min(60, rows.length-dvMasN)+' más (de '+rows.length+')';
+}
+// ficha de un servicio: calendario de grupos por día y edad, variedad por semana y alimentos del día elegido
+function dvDetalle(){
+  const box = $('#dvDet'), s = dvSA && byCui[dvSA];
+  if (!s || !s.dv || !sel().includes(s)){ box.hidden = true; box.innerHTML = ''; return; }
+  const F = DVM.fechas(s.dv), S = DVM.semanas(s.dv), x = dvDe(s);
+  const eds = [0,1,2,3].filter(g=>s.u[g] && DVM.codigos(s.dv, g) && (dvEd==='' || +dvEd===g));
+  const sems = []; F.forEach((f,i)=>{ const w = sems[sems.length-1]; if (w && w.s===S[i]) w.n++; else sems.push({s:S[i], n:1}); });
+  const celda = (g, i) => { const c = DVM.codigos(s.dv, g).substr(i*7, 7); if (!c || c[0]==='-') return '<td></td>';
+    const p = DVM.puntaje(c, dvT), on = dvDia && dvDia.f===F[i] && dvDia.g===g;
+    const faltan = DVM.GRUPOS.filter((n,j)=>!(+c[j]>dvT));
+    return '<td><button type="button" class="p'+p+'" data-dvf="'+F[i]+'" data-dvg="'+g+'" aria-pressed="'+on+'" title="'+esc(dvDiaTxt(F[i])+' · '+DVM.EDADES[g]+': '+p+' de 7 grupos'+(faltan.length?'. Sin: '+faltan.join(', ').toLowerCase():''))+'"><b>'+p+'</b><span class="dv-dots">'+
+      [0,1,2,3,4,5,6].map(j=>'<i class="'+DV_GRC[j]+(+c[j]>dvT?' on':'')+'"></i>').join('')+'</span></button></td>'; };
+  const vtab = (()=>{ const V = DVM.variedades(s.dv).filter(r=>eds.includes(r[0]));
+    if (!V.length) return '';
+    const ws = [...new Set(V.map(r=>r[1]))].sort((a,b)=>a-b);
+    return '<h4 style="margin:16px 0 4px">Alimentos distintos por semana</h4><div class="scroll"><table class="cmp" style="width:auto"><thead><tr><th>Edad</th>'+ws.map(w=>'<th class="n">Semana '+w+'</th>').join('')+'</tr></thead><tbody>'+
+      eds.map(g=>'<tr><td>'+DVM.EDADES[g]+'</td>'+ws.map(w=>{ const r = V.find(z=>z[0]===g && z[1]===w); if (!r) return '<td class="n">—</td>';
+        const n = r[3].substr(dvT*7, 7).split('').reduce((a,ch)=>a+parseInt(ch,36),0);
+        return '<td class="n"'+(r[2]<DVM.MIN_DIAS_SEMANA?' style="color:var(--muted)" title="Semana de '+r[2]+(r[2]===1?' día':' días')+': no entra en el promedio"':' title="'+r[2]+' días de atención"')+'>'+n+'<span class="sub2">'+r[2]+(r[2]===1?' día':' días')+'</span></td>'; }).join('')+'</tr>').join('')+'</tbody></table></div>'; })();
+  box.hidden = false;
+  box.innerHTML = '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><h3>'+esc(s.sa)+'</h3><button type="button" class="rc-x" id="dvDetX" aria-label="Cerrar la ficha">×</button></div>'+
+    '<div class="facts"><div><b>UT/OCT</b>'+esc(s.ut)+'</div><div><b>Comité de gestión</b>'+esc(s.cg)+'</div><div><b>Distrito</b>'+esc(s.dist||'—')+'</div>'+
+    '<div><b>Niñas y niños</b>'+[0,1,2,3].filter(g=>s.u[g]).map(g=>GRC[g]+': '+s.u[g]).join(' · ')+'</div>'+
+    (x?'<div><b>Puntaje promedio</b>'+dvF(x.prom)+' (de '+x.min+' a '+x.max+')</div><div><b>Alimentos distintos por semana</b>'+dvV(x.vprom)+'</div>':'')+'</div>'+
+    '<div class="dv-leg">'+DVM.GRUPOS.map((g,j)=>'<span class="'+DV_GRC[j]+'"><i class="sw"></i>'+esc(g)+'</span>').join('')+'</div>'+
+    '<p class="note" style="margin:0 0 6px">Cada casilla es un menú diario: el número es su puntaje y los puntos de color, los grupos presentes ('+DVM.UMBRAL_TXT[dvT]+'). Toque un día para ver sus alimentos.</p>'+
+    '<div class="scroll"><table class="dv-cal"><thead><tr><th></th>'+sems.map(w=>'<th class="sm" colspan="'+w.n+'">Semana '+w.s+'</th>').join('')+'</tr><tr><th></th>'+F.map(f=>'<th>'+dvDiaTxt(f).replace(' ','<br>')+'</th>').join('')+'</tr></thead><tbody>'+
+      eds.map(g=>'<tr><th class="ed">'+GRC[g]+'</th>'+F.map((f,i)=>celda(g,i)).join('')+'</tr>').join('')+'</tbody></table></div>'+
+    vtab+'<div id="dvDiaBox"></div>';
+  $('#dvDetX').onclick = ()=>{ dvSA = null; dvDia = null; dvDetalle(); dvServicios(sel(), DVM.agregar(D.sa.map(s=>dvDe(s)))); };
+  dvDiaDet(s);
+}
+function dvDiaDet(s){
+  const box = $('#dvDiaBox'); if (!box) return;
+  if (!dvDia){ box.innerHTML = ''; return; }
+  const r = window.__cargarDet ? window.__cargarDet(s.cui) : true;
+  if (r !== true){ box.innerHTML = '<p class="note">Cargando el menú del día…</p>';
+    Promise.resolve(r).then(()=>{ if (dvSA===s.cui && !$('#vDiv').hidden) dvDiaDet(s); }).catch(()=>{ box.innerHTML = '<p class="note">No se pudo leer el detalle del menú. Vuelva a intentarlo en un momento.</p>'; }); return; }
+  const rc = D.recs[s.cui] || {}, mw = (D.menuW[s.cui] || []).filter(z=>z[0]===dvDia.f), cells = {};
+  mw.forEach(z=>{ cells[z[2]] = z[3]; });
+  const {g, det} = DVM.gramosDia(cells, rc, D.ing, dvDia.g, true);
+  const porG = [[],[],[],[],[],[],[]], no = [], tot = [0,0,0,0,0,0,0];
+  Object.keys(g).forEach(i=>{ const m = D.ing[i], c = DVM.clasificar(m[0], m[9])[0], it = {n:m[0], x:g[i]};
+    if (c<0) no.push(it); else { porG[c].push(it); tot[c] += g[i]; } });
+  const kal = dvDia.g===0 ? 1 : 2;
+  const preps = [0, kal, 4, 3].filter(k=>k in cells).map(k=>{ const z = mw.find(q=>q[2]===k); return '<b>'+DV_TIEMPO[k]+':</b> '+esc(z && z[4]!=null ? D.preps[z[4]] : '—'); }).join(' · ');
+  const gfmt = v => nf1.format(v)+' g';
+  const lim = DVM.UMBRAL[dvT], llega = j => dvT===0 ? tot[j]>0 : tot[j]>=lim;
+  const n = [0,1,2,3,4,5,6].filter(llega).length;
+  const sem = (D.menuW[s.cui] || []).find(z=>z[0]===dvDia.f);
+  box.innerHTML = '<div class="dv-dia"><h4>'+dvDiaTxt(dvDia.f)+' · '+DVM.EDADES[dvDia.g]+': '+n+' de 7 grupos</h4><p class="note" style="margin:0 0 8px">'+preps+
+    (sem?' · <a href="#" class="vermenu" id="dvVerMenu">Ver en el menú semanal</a>':'')+'</p><ul class="dv-gl">'+
+    DVM.GRUPOS.map((gn,j)=>'<li class="'+DV_GRC[j]+(llega(j)?'':' falta')+'"><b>'+esc(gn)+' · '+(porG[j].length ? gfmt(tot[j]) : 'no hay')+(porG[j].length && !llega(j) ? ' (no llega a '+DVM.UMBRAL_TXT[dvT]+')' : '')+'</b>'+
+      (porG[j].length ? porG[j].sort((a,b)=>b.x-a.x).map(it=>esc(it.n.toLowerCase())+' '+gfmt(it.x)).join(', ') : '—')+'</li>').join('')+
+    (no.length?'<li class="no" style="--gc:var(--muted)"><b>No cuentan (grasas, azúcares, condimentos)</b>'+no.sort((a,b)=>b.x-a.x).map(it=>esc(it.n.toLowerCase())+' '+gfmt(it.x)).join(', ')+'</li>':'')+
+    '</ul><p class="note" style="margin:8px 0 0">Gramos de parte comestible para una niña o niño de '+DVM.EDADES[dvDia.g]+', según el recetario del envío.</p></div>';
+  const a = $('#dvVerMenu'); if (a) a.onclick = e=>{ e.preventDefault(); window.__verMenu(s.cui, sem[1], {f: dvDia.f}); };
+}
+function dvMetodo(){
+  const el = $('#dvMet'); if (el.dataset.ok===D.periodo) return; el.dataset.ok = D.periodo;
+  const gm = D.gmap || {}, por = [[],[],[],[],[],[],[]], no = [];
+  (D.alimentos||[]).forEach(([a])=>{ const c = DVM.clasificar(a, gm[a]||''); (c[0]<0?no:por[c[0]]).push(a.toLowerCase()); });
+  el.innerHTML = '<h3 style="margin-top:0">Puntaje diario</h3><ul>'+
+    '<li>Se evalúa el menú programado del envío vigente de cada servicio alimentario, día por día y por grupo de edad con niñas y niños (6 a 8, 9 a 11, 12 a 23 y 24 a 36 meses). A cada combinación de servicio, día y grupo de edad se le llama <b>menú diario</b>.</li>'+
+    '<li>El menú diario suma la media mañana, el almuerzo de su edad (6 a 8 meses o 9 a 36 meses), la fruta y la media tarde, con los gramos de la receta para esa edad, en parte comestible.</li>'+
+    '<li>El <b>puntaje diario</b> es cuántos de los 7 grupos tiene el menú diario (de 0 a 7). Un grupo cuenta si sus alimentos suman más de 0 g, 10 g o más, o 15 g o más, según lo que se elija arriba (10 g por defecto).</li>'+
+    '<li>Grupos, adaptados de la diversidad alimentaria mínima de OMS/UNICEF (2021), sin la leche materna: '+DVM.GRUPOS.map((g,i)=>(i+1)+') '+g.toLowerCase()).join('; ')+'. Grasas, azúcares, condimentos, hierbas, sal y agua no cuentan.</li>'+
+    '<li>«Menús con 5 o más grupos» usa el corte de la diversidad alimentaria mínima (5 grupos) como referencia.</li></ul>'+
+    '<h3>Promedios y rangos</h3><ul>'+
+    '<li>Servicio: promedio de sus puntajes diarios; cada grupo de edad pesa según sus niñas y niños. Mínimo y máximo: el menú diario más bajo y el más alto del mes.</li>'+
+    '<li>UT/OCT y nacional: promedio de los servicios; <b>cada servicio pesa igual</b>, tenga muchas o pocas niñas y niños. Mínimo y máximo: entre todos sus menús diarios.</li></ul>'+
+    '<h3>Variedad de la semana</h3><ul><li>Alimentos distintos de los 7 grupos en la semana del menú, para cada grupo de edad. Un alimento cuenta si algún día de la semana llega a los gramos elegidos. Las variedades de un mismo alimento cuentan una vez (el texto entre paréntesis no se toma en cuenta).</li>'+
+    '<li>Solo semanas con 4 o más días de atención. Servicio: promedio de sus semanas; UT/OCT y nacional: promedio de los servicios.</li></ul>'+
+    '<h3>Clasificación de los alimentos</h3><p class="dv-cls">Se toma el grupo de la tabla de composición de la herramienta (COMP_ALIMENTOS), con estos ajustes: betarraga como verdura; choclo, maíz mote, harina de plátano y plátano bellaco como cereales; tarwi y ajonjolí con las menestras, nueces y semillas; mantequilla y aceituna no cuentan; el maíz morado no cuenta (se hierve para dar color y sabor). '+
+    'Frutas y verduras fuente de vitamina A (de pulpa anaranjada o amarilla intensa y hojas verde oscuro): zanahoria, zapallo macre, calabaza, camote amarillo, pimiento, espinaca, acelga, mango, papaya, melón, lúcuma, aguaymanto y maracuyá. Esta lista está en revisión.</p>'+
+    '<p class="dv-cls">Alimentos de los pedidos de '+mesTxt(D.periodo)+', por grupo:</p><ul class="dv-gl">'+por.map((L,j)=>'<li class="'+DV_GRC[j]+'"><b>'+esc(DVM.GRUPOS[j])+'</b>'+(L.length?esc(L.join(', ')):'—')+'</li>').join('')+
+      '<li class="no" style="--gc:var(--muted)"><b>No cuentan</b>'+(no.length?esc(no.join(', ')):'—')+'</li></ul>';
+}
+// eventos de la pestaña
+$('#dvT').addEventListener('click', e=>{ const b = e.target.closest('[data-t]'); if (!b) return; dvT = +b.dataset.t; try{ localStorage.setItem('envios_dvT', String(dvT)); }catch(_){} diversidad(); });
+$('#dvEd').addEventListener('change', e=>{ dvEd = e.target.value; dvDia = null; try{ localStorage.setItem('envios_dvEd', dvEd); }catch(_){} diversidad(); });
+$('#dvMesM').addEventListener('click', e=>{ const b = e.target.closest('[data-m]'); if (!b) return; dvMesM = b.dataset.m; dvMeses(); });
+$('#dvMas').addEventListener('click', ()=>{ dvMasN += 60; dvServicios(sel(), DVM.agregar(D.sa.map(s=>dvDe(s)))); });
+const dvOrdenar = th => { if (th.dataset.dvk){ const k = th.dataset.dvk; if (dvOrdK===k) dvOrdD = -dvOrdD; else { dvOrdK = k; dvOrdD = k==='ut' ? 1 : -1; } dvUTs(DVM.agregar(D.sa.map(s=>dvDe(s)))); }
+  else if (th.dataset.dvs){ const k = th.dataset.dvs; if (dvSaK===k) dvSaD = -dvSaD; else { dvSaK = k; dvSaD = (k==='sa'||k==='ut') ? 1 : -1; } dvServicios(sel(), DVM.agregar(D.sa.map(s=>dvDe(s)))); } };
+on('click', e=>{ const th = e.target.closest('#vDiv th[data-dvk], #vDiv th[data-dvs]'); if (th) dvOrdenar(th); });
+on('keydown', e=>{ if (e.key!=='Enter' && e.key!==' ') return; const th = e.target.closest && e.target.closest('#vDiv th[data-dvk], #vDiv th[data-dvs]'); if (th){ e.preventDefault(); dvOrdenar(th); } });
+on('click', e=>{ const a = e.target.closest('a[data-dvsa]'); if (!a) return; e.preventDefault(); dvSA = a.dataset.dvsa; dvDia = null;
+  dvServicios(sel(), DVM.agregar(D.sa.map(s=>dvDe(s)))); dvDetalle(); const b = $('#dvDet'); if (!b.hidden) b.scrollIntoView({behavior:'smooth', block:'start'}); });
+on('click', e=>{ const b = e.target.closest('#dvDet button[data-dvf]'); if (!b) return; const s = byCui[dvSA]; if (!s) return;
+  dvDia = (dvDia && dvDia.f===b.dataset.dvf && dvDia.g===+b.dataset.dvg) ? null : {f:b.dataset.dvf, g:+b.dataset.dvg};
+  document.querySelectorAll('#dvDet button[data-dvf]').forEach(x=>x.setAttribute('aria-pressed', String(!!dvDia && x.dataset.dvf===dvDia.f && +x.dataset.dvg===dvDia.g)));
+  dvDiaDet(s); });
+
+function render(){ titulosUT(); kpis(); coberturaNut(); avance(); porDia(); ultimos(); calidad(); ejec(); nino(); foods(); alertasAporte(); resumenCob(); resumenMacro(); graficoMacro(); alertasMacro(); prov(); explorar(); detalle(); if(!$('#vMen').hidden) menuSemanal(true); diversidad(); }
 const E0 = arguments[2];
 if (E0){ if (E0.XS) XD.forEach(d=>(E0.XS[d]||[]).forEach(k=>XS[d].add(k))); if (E0.xMet==='kg'){ xMet='kg'; $('#xMetK').setAttribute('aria-pressed','true'); $('#xMetS').setAttribute('aria-pressed','false'); } if (E0.xQ){ xQ=E0.xQ; $('#xQ').value=xQ; } if (E0.SA) SA=E0.SA; if (E0.SEC!==undefined) SEC = SECT[E0.SEC] ? E0.SEC : ''; if (E0.UT && (E0.UT==='TODAS' || uts.includes(E0.UT))){ UT=E0.UT; $('#fUT').value=UT; } CG=E0.CG||''; SAF=E0.SAF||''; llenarFiltros(); if (E0.SEM!=null) SEM=E0.SEM; openCui=E0.openCui; sortK=E0.sortK; sortD=E0.sortD; macSel=E0.macSel; macVista=E0.macVista; $('#q').value=E0.q||''; DIA=E0.DIA; DIAkey=E0.DIAkey; FOCO=E0.FOCO;
   if (E0.metric==='kg'){ metric='kg'; $('#mK').setAttribute('aria-pressed','true'); $('#mS').setAttribute('aria-pressed','false'); } }
+if (E0 && E0.dv){ const v = E0.dv; dvT = v.t; dvEd = v.ed; dvOrdK = v.ok; dvOrdD = v.od; dvSaK = v.sk; dvSaD = v.sd; dvMesM = v.mm; dvSA = v.sa; dvDia = v.dia; dvMasN = v.mas || 60; }
 render();
-{ const HV = {'#menu-semanal':'menu', '#envios':'env', '#alimentos':'ali', '#proveedores':'prov'}; if (HV[location.hash]) tab(HV[location.hash]); }
-return { estado: () => ({XS: Object.fromEntries(XD.map(d=>[d,[...XS[d]]])), xMet, xQ, SA, SEC, UT, CG, SAF, SEM, openCui, sortK, sortD, metric, macSel, macVista, q:$('#q').value, DIA, DIAkey, FOCO}) };
+{ const HV = {'#menu-semanal':'menu', '#envios':'env', '#diversidad':'div', '#alimentos':'ali', '#proveedores':'prov'}; if (HV[location.hash]) tab(HV[location.hash]); }
+return { estado: () => ({dv: {t:dvT, ed:dvEd, ok:dvOrdK, od:dvOrdD, sk:dvSaK, sd:dvSaD, mm:dvMesM, sa:dvSA, dia:dvDia, mas:dvMasN}, XS: Object.fromEntries(XD.map(d=>[d,[...XS[d]]])), xMet, xQ, SA, SEC, UT, CG, SAF, SEM, openCui, sortK, sortD, metric, macSel, macVista, q:$('#q').value, DIA, DIAkey, FOCO}) };
 }
 

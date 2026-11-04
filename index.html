@@ -68,6 +68,76 @@ td.f100{white-space:nowrap;font-variant-numeric:tabular-nums}
 td.f100 .hh{display:block;font-size:12px;color:var(--muted)}
 @media (min-width:1000px){#avance .grid2{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)}}
 
+/* diversidad del menú */
+:root{--dv-c0:#9A6A2E;--dv-c1:#6A4FC0;--dv-c2:#2A78D6;--dv-c3:#D63B3A;--dv-c4:#14967A;--dv-c5:#E0700C;--dv-c6:#2E8B2E}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--dv-c0:#C99A5E;--dv-c1:#9D8BEA;--dv-c2:#5BA0EC;--dv-c3:#EC7372;--dv-c4:#3CC39F;--dv-c5:#F29A4A;--dv-c6:#5DBB5D}}
+:root[data-theme="dark"]{--dv-c0:#C99A5E;--dv-c1:#9D8BEA;--dv-c2:#5BA0EC;--dv-c3:#EC7372;--dv-c4:#3CC39F;--dv-c5:#F29A4A;--dv-c6:#5DBB5D}
+.dv-g0{--gc:var(--dv-c0)}.dv-g1{--gc:var(--dv-c1)}.dv-g2{--gc:var(--dv-c2)}.dv-g3{--gc:var(--dv-c3)}.dv-g4{--gc:var(--dv-c4)}.dv-g5{--gc:var(--dv-c5)}.dv-g6{--gc:var(--dv-c6)}
+#dvKpi .kpi .labw .lab{white-space:normal}
+table.dvt th{white-space:normal;min-width:62px}
+table.dvt th.nro{min-width:0}
+#dvUT td:nth-child(2),#dvMes td:first-child{white-space:nowrap}
+#dvSA td:nth-child(2){min-width:210px}
+a.dvsa{color:inherit;text-decoration:underline;text-decoration-color:var(--rule);text-underline-offset:3px}
+a.dvsa:hover{color:var(--azul);text-decoration-color:var(--azul)}
+.dv-ctl{display:flex;flex-wrap:wrap;gap:10px 22px;align-items:flex-end;margin:0 0 6px}
+.dv-ctl .fld>span{font-weight:600;font-size:13px;color:var(--ink2)}
+.dv-ctl .seg{align-self:flex-start}
+.dv-b{display:grid;grid-template-columns:minmax(96px,200px) minmax(0,1fr) auto;column-gap:10px;row-gap:6px;align-items:center}
+.dv-b .nm{font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dv-b .nm .sw{background:var(--gc)}
+.dv-b .tr{height:14px;position:relative;background:var(--bg);border-radius:0 4px 4px 0}
+.dv-b .tr .fi{position:absolute;left:0;top:0;bottom:0;border-radius:0 4px 4px 0;background:var(--gc,var(--azul))}
+.dv-b .tr .ref{position:absolute;top:-3px;bottom:-3px;border-left:2px dashed var(--ink2)}
+.dv-b .v{font-size:13px;color:var(--ink2);white-space:nowrap;text-align:right;min-width:72px}
+.dv-b .v small{display:block;font-size:11.5px;color:var(--muted)}
+.dv-ref{font-size:12.5px;color:var(--muted);margin:8px 0 0}
+.dv-ref i{display:inline-block;width:0;height:12px;border-left:2px dashed var(--ink2);margin:0 6px -2px 2px}
+.dvbar{display:flex;align-items:center;gap:8px;min-width:150px}
+.dvbar .tr{flex:1;height:9px;background:var(--azul-soft);border-radius:4px;position:relative;min-width:60px}
+.dvbar .tr span{position:absolute;left:0;top:0;bottom:0;background:var(--azul);border-radius:4px}
+.dvbar .tr i{position:absolute;top:-4px;bottom:-4px;border-left:2px dashed var(--ink2)}
+.dvbar b{font-variant-numeric:tabular-nums;min-width:34px;text-align:right}
+table.dvt tr.nac td{font-weight:700;background:var(--bg);border-bottom:2px solid var(--rule)}
+table.dvt tr.act td{background:var(--azul-soft)}
+table.dvt td.dif{color:var(--ink2);font-variant-numeric:tabular-nums}
+table.dvt td.mesv{text-align:right;font-variant-numeric:tabular-nums}
+table.dvt td .sub2{display:block;font-size:11.5px;color:var(--muted);font-weight:400}
+.dv-cal{border-collapse:separate;border-spacing:3px;width:auto;font-size:12px}
+.dv-cal th{font-size:11px;padding:2px 4px;text-align:center;letter-spacing:0;text-transform:none;border:0}
+.dv-cal th.ed{text-align:left;white-space:nowrap;font-size:12px;color:var(--ink2)}
+.dv-cal th.sm{color:var(--ink2);font-weight:700;border-bottom:2px solid var(--rule)}
+.dv-cal td{padding:0;border:0}
+.dv-cal button{font:inherit;display:grid;gap:3px;justify-items:center;width:44px;padding:4px 2px 5px;border:1px solid var(--rule);border-radius:7px;background:var(--surface);color:var(--ink);cursor:pointer}
+.dv-cal button b{font-size:15px;line-height:1}
+.dv-cal button[aria-pressed="true"]{border-color:var(--azul);box-shadow:inset 0 0 0 2px var(--azul)}
+.dv-cal button.p7,.dv-cal button.p6{background:var(--azul-soft)}
+.dv-cal button.p4,.dv-cal button.p3,.dv-cal button.p2,.dv-cal button.p1,.dv-cal button.p0{background:var(--bg)}
+.dv-dots{display:grid;grid-template-columns:repeat(7,4px);gap:1px}
+.dv-dots i{width:4px;height:4px;border-radius:50%;background:var(--rule)}
+.dv-dots i.on{background:var(--gc)}
+.dv-leg{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--ink2);margin:8px 0 4px}
+.dv-leg .sw{background:var(--gc)}
+.dv-dia{margin-top:12px;border-top:1px solid var(--rule);padding-top:10px}
+.dv-dia h4{margin:0 0 6px;font-size:15px}
+.dv-gl{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:8px 18px;margin:0;padding:0;list-style:none}
+.dv-gl li{border-left:3px solid var(--gc);padding:2px 0 2px 9px;font-size:13.5px;line-height:1.4}
+.dv-gl li b{display:block;font-size:12px;letter-spacing:.03em;text-transform:uppercase;color:var(--gc)}
+.dv-gl li.no{opacity:.75}
+.dv-gl li.falta{border-left-style:dashed}
+.dv-met>ul,.dv-met>p{max-width:80ch}
+#dvMet .dv-gl{display:block;columns:2 300px;column-gap:22px}
+#dvMet .dv-gl li{break-inside:avoid;margin:0 0 10px}
+.dv-met h3{margin-top:14px}
+.dv-met ul{margin:4px 0 8px;padding-left:20px}
+.dv-met li{margin:3px 0}
+.dv-cls{font-size:13px;color:var(--ink2);line-height:1.5}
+.dv-cls b{color:var(--gc)}
+.dv-aviso{background:var(--warn-soft);color:var(--warn);border-radius:8px;padding:10px 14px;font-size:14px;margin:12px 0}
+/* con seis pestañas, en celulares angostos van en dos filas de tres */
+@media (max-width:480px){.bar .wrap .tabs{display:grid;grid-template-columns:repeat(3,1fr)}}
+@media (max-width:560px){.dv-b{grid-template-columns:minmax(90px,36%) minmax(0,1fr);row-gap:0}.dv-b .nm{grid-row:span 2;white-space:normal;font-size:12.5px;line-height:1.25}.dv-b .tr{margin-top:6px}.dv-b .v{grid-column:2;text-align:left;min-width:0;margin-bottom:6px;font-size:12px}.dv-b .v small{display:inline;margin-left:4px}}
+
 /* 8 tarjetas: 5 arriba y 3 abajo (las de costo, más anchas) */
 @media (min-width:900px){#kpis{grid-template-columns:repeat(60,1fr)}#kpis .kpi{grid-column:span 12}#kpis .kpi:nth-child(n+6){grid-column:span 20}#kpis .kpi .labw .lab{white-space:normal}}
 </style>
@@ -427,6 +497,7 @@ h3.ut-t .uttag{margin-right:6px}
       <button type="button" role="tab" id="tbRes" aria-selected="true" aria-controls="vRes">Resumen</button>
       <button type="button" role="tab" id="tbEnv" aria-selected="false" aria-controls="vEnv">Envíos</button>
       <button type="button" role="tab" id="tbMen" aria-selected="false" aria-controls="vMen">Menú<span class="tl"> semanal</span></button>
+      <button type="button" role="tab" id="tbDiv" aria-selected="false" aria-controls="vDiv">Diversidad</button>
       <button type="button" role="tab" id="tbAli" aria-selected="false" aria-controls="vAli">Alimentos</button>
       <button type="button" role="tab" id="tbProv" aria-selected="false" aria-controls="vProv">Proveedores</button>
     </div>
@@ -563,6 +634,60 @@ h3.ut-t .uttag{margin-right:6px}
     <p class="note" id="sheetNote" style="margin-top:10px"></p>
   </section>
 </div>
+<div id="vDiv" role="tabpanel" aria-labelledby="tbDiv" hidden>
+  <section id="dv-puntaje" style="margin-top:22px">
+    <h2>Diversidad del menú</h2>
+    <p class="lede">Cuántos de los 7 grupos de alimentos tiene el menú de cada día (media mañana, almuerzo, fruta y media tarde), por grupo de edad. Es el <b>puntaje diario</b>, de 0 a 7. Se basa en la diversidad alimentaria mínima de OMS/UNICEF (2021); el detalle está en Metodología, al final.</p>
+    <div class="dv-ctl">
+      <div class="fld"><span id="dvTl">Para contar un grupo, sus alimentos deben sumar</span>
+        <div class="seg" role="group" aria-labelledby="dvTl" id="dvT"><button type="button" data-t="0" aria-pressed="false">más de 0 g</button><button type="button" data-t="1" aria-pressed="true">10 g o más</button><button type="button" data-t="2" aria-pressed="false">15 g o más</button></div></div>
+      <div class="fld"><label for="dvEd">Grupo de edad</label><select id="dvEd"></select></div>
+    </div>
+    <div id="dvAviso" class="dv-aviso" hidden></div>
+    <div class="kpis kpis5" id="dvKpi"></div>
+    <div class="grid2" style="margin-top:16px">
+      <div class="panel"><h3>Menús diarios según su puntaje</h3><p class="note" id="dvDistN"></p><div id="dvDist"></div></div>
+      <div class="panel"><h3>Presencia de cada grupo de alimentos</h3><p class="note" id="dvPresN"></p><div id="dvPres"></div><p class="dv-ref" id="dvPresR" hidden><i></i>valor nacional</p></div>
+    </div>
+  </section>
+
+  <section id="dv-variedad">
+    <h2>Variedad de la semana</h2>
+    <p class="lede">Alimentos distintos que tiene el menú en una semana de atención (4 días o más), con el mismo criterio de gramos. Las variedades de un mismo alimento cuentan una vez: mango Kent y mango Edwards son «mango».</p>
+    <div class="panel"><h3>Alimentos distintos por semana, por grupo</h3><p class="note" id="dvVarN"></p><div class="scroll"><table class="cmp dvt" id="dvVar"></table></div></div>
+  </section>
+
+  <section id="dv-uts">
+    <h2>Comparativa por unidad territorial</h2>
+    <p class="lede" id="dvUtL"></p>
+    <div class="panel scroll"><table class="cmp dvt" id="dvUT"></table></div>
+  </section>
+
+  <section id="dv-edades">
+    <h2>Por grupo de edad</h2>
+    <p class="lede" id="dvEdL"></p>
+    <div class="panel scroll"><table class="cmp dvt" id="dvEdT"></table></div>
+  </section>
+
+  <section id="dv-meses">
+    <h2>Entre meses</h2>
+    <p class="lede" id="dvMesL"></p>
+    <div class="dv-ctl"><div class="seg" role="group" aria-label="Medida" id="dvMesM"><button type="button" data-m="p" aria-pressed="true">Puntaje promedio</button><button type="button" data-m="v" aria-pressed="false">Alimentos distintos por semana</button></div></div>
+    <div class="panel scroll"><table class="cmp dvt" id="dvMes"></table></div>
+  </section>
+
+  <section id="dv-servicios">
+    <h2>Por servicio alimentario</h2>
+    <p class="lede" id="dvSaL"></p>
+    <div class="panel"><div class="scroll"><table class="cmp dvt" id="dvSA"></table></div><button type="button" class="xs-mas" id="dvMas" hidden></button></div>
+    <div class="drawer" id="dvDet" hidden></div>
+  </section>
+
+  <section id="dv-metodo">
+    <h2>Metodología</h2>
+    <div class="panel dv-met" id="dvMet"></div>
+  </section>
+</div>
 <div id="vAli" role="tabpanel" aria-labelledby="tbAli" hidden>
   <section id="pedido" style="margin-top:22px">
     <h2>Qué se está pidiendo</h2>
@@ -630,6 +755,7 @@ h3.ut-t .uttag{margin-right:6px}
 <div id="tip" role="tooltip"></div>
 <div id="rcOv" class="rc-ov" hidden><div class="rc-box" id="rcBox" role="dialog" aria-modal="true" aria-labelledby="rcT"></div></div>
 <script src="armar.js"></script>
+<script src="diversidad.js"></script>
 <script src="app.js"></script>
 <script type="module" src="boot.mjs"></script>
 </body>

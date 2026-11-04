@@ -302,6 +302,7 @@ function avance(){
   const sin = Object.keys(D.padUT).filter(u=>!env[u] && enSec(u)).sort();
   $('#sinEnv').innerHTML = sin.length ? '<b>Todavía sin envíos ('+sin.length+'):</b> '+sin.map(esc).join(', ')+'.' : 'Todas las unidades territoriales'+(SEC?' de '+esc(secNom()):'')+' tienen al menos un envío.';
   faltan(env);
+  botonXls();
 }
 // con una UT/OCT filtrada: servicios de su padrón que todavía no tienen envío vigente en el mes
 function faltan(env){
@@ -321,6 +322,62 @@ function faltan(env){
   $('#tFalt').innerHTML = '<thead><tr><th class="n">N°</th><th>Servicio alimentario</th><th class="n">CUI</th><th>Comité de gestión</th><th>Distrito</th></tr></thead><tbody>'+
     fl.map((p,i)=>'<tr><td class="n">'+(i+1)+'</td><td>'+esc(p[2])+'</td><td class="n">'+esc(p[1])+'</td><td>'+esc(p[3])+'</td><td>'+esc(p[4])+'</td></tr>').join('')+'</tbody>';
 }
+// -------- servicios del padrón sin envío vigente, para la selección de arriba (sectorista, UT/OCT y comité); descarga en Excel
+const secDe = u => { const e = Object.entries(SECT).find(([k,o])=>o.set.has(nUT(u))); return e ? e[1].n : ''; };
+function sinEnvio(){
+  const PADL = D.pad || window.__PAD; if (!PADL) return null;
+  const env = {}; D.sa.forEach(s=>{ (env[s.ut]=env[s.ut]||new Set()).add(String(s.cuiPad||s.cui)); });
+  const pad = PADL.filter(p=> (UT==='TODAS' ? enSec(p[0]) : p[0]===UT) && (!CG || nCG(p[3])===CG));
+  const vistos = new Set(), P = pad.filter(p=>{ const k = p[0]+'|'+p[1]; if (vistos.has(k)) return false; vistos.add(k); return true; });
+  const fl = P.filter(p=>!(env[p[0]] && env[p[0]].has(String(p[1]))))
+    .sort((x,y)=> x[0].localeCompare(y[0],'es') || nCG(x[3]).localeCompare(nCG(y[3]),'es') || String(x[2]).localeCompare(String(y[2]),'es'));
+  const res = {}; P.forEach(p=>{ const o = res[p[0]] || (res[p[0]] = {ut:p[0], e:0, n:0}); o.e++; if (env[p[0]] && env[p[0]].has(String(p[1]))) o.n++; });
+  return {fl, res: Object.values(res).sort((x,y)=>x.ut.localeCompare(y.ut,'es')), tot: P.length};
+}
+function botonXls(){
+  const b = $('#xlsFalt'); if (!b) return;
+  const L = sinEnvio();
+  if (!L){ b.disabled = true; $('#xlsNote').textContent = 'El padrón todavía no se ha cargado.'; return; }
+  b.disabled = !L.fl.length;
+  const quien = UT==='TODAS' ? (SEC ? 'las UT/OCT de '+secNom() : 'todas las UT/OCT') : (CG ? 'el comité de gestión '+CG : UT);
+  $('#xlsNote').textContent = L.fl.length ? L.fl.length+' de '+L.tot+' servicios alimentarios del padrón de '+quien+' todavía no tienen envío vigente.' : 'Todos los servicios alimentarios del padrón de '+quien+' tienen envío vigente.';
+}
+let XLSXp = null;
+const cargarXLSX = () => window.XLSX ? Promise.resolve(window.XLSX) : (XLSXp = XLSXp || new Promise((ok, mal)=>{
+  const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+  s.onload = ()=> window.XLSX ? ok(window.XLSX) : mal(new Error('sin generador'));
+  s.onerror = ()=>{ XLSXp = null; mal(new Error('No se pudo cargar el generador de Excel')); };
+  document.head.appendChild(s); }));
+async function descargarSinEnvio(btn){
+  const L = sinEnvio(); if (!L || !L.fl.length) return;
+  const txt = btn.innerHTML; btn.disabled = true; btn.lastChild.textContent = 'Generando…';
+  try {
+    const X = await cargarXLSX();
+    const mesL = mesTxt(D.periodo), corte = /^\d{4}-\d{2}-\d{2}/.test(String(D.corte)) ? D.corte.slice(8,10)+'/'+D.corte.slice(5,7)+'/'+D.corte.slice(0,4)+' '+D.corte.slice(11)+' h' : 'sin fecha de corte';
+    const selTxt = UT==='TODAS' ? (SEC ? 'UT/OCT de '+secNom() : 'Todas las UT/OCT') : UT+(CG ? ' · CG '+CG : '');
+    const cab = ['N°','Sectorista','UT/OCT','Comité de gestión','CUI','Servicio alimentario','Distrito'];
+    const filas = L.fl.map((p,i)=>[i+1, secDe(p[0]), p[0], nCG(p[3]), /^\d+$/.test(String(p[1])) ? +p[1] : String(p[1]), String(p[2]).replace(/\s+/g,' ').trim(), p[4]||'']);
+    const h1 = X.utils.aoa_to_sheet([['Servicios alimentarios sin envío vigente · '+mesL], ['Selección: '+selTxt+' · datos al '+corte+' · '+L.fl.length+' de '+L.tot+' servicios del padrón'], [], cab].concat(filas));
+    h1['!cols'] = [{wch:5},{wch:24},{wch:30},{wch:34},{wch:9},{wch:46},{wch:24}];
+    h1['!autofilter'] = {ref: 'A4:G'+(4+filas.length)};
+    h1['!merges'] = [{s:{r:0,c:0}, e:{r:0,c:6}}, {s:{r:1,c:0}, e:{r:1,c:6}}];
+    const cab2 = ['Sectorista','UT/OCT','Servicios del padrón','Con envío vigente','Sin envío','Avance'];
+    const f2 = L.res.map(o=>[secDe(o.ut), o.ut, o.e, o.n, o.e-o.n, o.e ? o.n/o.e : 0]);
+    const tE = sum(L.res.map(o=>o.e)), tN = sum(L.res.map(o=>o.n));
+    const h2 = X.utils.aoa_to_sheet([['Avance de los envíos por UT/OCT · '+mesL], ['Selección: '+selTxt+' · datos al '+corte+' · no incluye los servicios que enviaron con un CUI fuera del padrón'], [], cab2].concat(f2, [['', 'Total', tE, tN, tE-tN, tE ? tN/tE : 0]]));
+    h2['!cols'] = [{wch:24},{wch:32},{wch:20},{wch:18},{wch:12},{wch:10}];
+    for (let r = 4; r <= 4+f2.length; r++){ const c = h2[X.utils.encode_cell({r, c:5})]; if (c) c.z = '0.0%'; }
+    h2['!autofilter'] = {ref: 'A4:F'+(4+f2.length)};
+    h2['!merges'] = [{s:{r:0,c:0}, e:{r:0,c:5}}, {s:{r:1,c:0}, e:{r:1,c:5}}];
+    const wb = X.utils.book_new(); X.utils.book_append_sheet(wb, h1, 'Sin envío'); X.utils.book_append_sheet(wb, h2, 'Resumen por UT');
+    const buf = X.write(wb, {bookType:'xlsx', type:'array'});
+    const nom = 'servicios_sin_envio_'+D.periodo+'_'+(slugPNG(selTxt)||'seleccion')+'.xlsx';
+    await guardarArchivo(new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), nom);
+    btn.innerHTML = txt;
+  } catch(e){ console.error('XLSX', e); btn.lastChild.textContent = 'No se pudo generar el Excel'; setTimeout(()=>{ btn.innerHTML = txt; }, 3000); }
+  finally { btn.disabled = false; }
+}
+$('#xlsFalt').addEventListener('click', e=>descargarSinEnvio(e.currentTarget));
 // D.envs: todos los envíos del mes, del más reciente al más antiguo:
 // [recepción 'AAAA-MM-DD HH:MM', envío 'AAAA-MM-DD HH:MM', CUI del padrón, servicio, UT, vigente 1/0]
 const envsSel = () => (D.envs||[]).filter(envFiltro());

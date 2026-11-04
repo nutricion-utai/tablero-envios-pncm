@@ -200,6 +200,13 @@ svg .ax{stroke:var(--rule);stroke-width:1}
 #xTab tr.xs-tot td{font-weight:700;border-top:2px solid var(--rule)}
 #xTab .sw{margin-right:6px}
 .xs-mas{font:inherit;font-size:13px;font-weight:600;margin-top:10px;padding:5px 12px;border:1px solid var(--azul);border-radius:8px;background:var(--surface);color:var(--azul);cursor:pointer}
+.xlsfila{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin:-4px 0 14px}
+.xlsbtn{font:inherit;font-size:13.5px;font-weight:600;display:inline-flex;align-items:center;gap:7px;padding:6px 14px;border:1px solid #1D7044;border-radius:8px;background:var(--surface);color:#1D7044;cursor:pointer}
+.xlsbtn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.xlsbtn:hover:not(:disabled){background:#1D7044;color:#fff}
+.xlsbtn:disabled{border-color:var(--rule);color:var(--muted);cursor:default}
+.xlsfila .note{margin:0;font-size:13px}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .xlsbtn:not(:disabled){border-color:#4FBF74;color:#4FBF74}}
 /* alertas sobre los envíos por UT/OCT */
 .utals{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:6px 16px 8px}
 .utals-h{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;justify-content:space-between;padding:6px 0}
@@ -509,6 +516,7 @@ h3.ut-t .uttag{margin-right:6px}
   <section id="avance" style="margin-top:22px">
     <h2>Avance de los envíos</h2>
     <p class="lede" id="avLede"></p>
+    <div class="xlsfila"><button type="button" id="xlsFalt" class="xlsbtn" title="Descarga un Excel con los servicios alimentarios del padrón que todavía no tienen envío vigente, según los filtros de arriba"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 8l8 8M16 8l-8 8"/></svg><span>Descargar Excel de servicios sin envío</span></button><span class="note" id="xlsNote"></span></div>
     <div class="grid2">
       <div class="panel">
         <h3>Por unidad territorial</h3>

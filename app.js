@@ -584,18 +584,60 @@ function explorar(){
       '<td class="n">'+fKg(o.kg)+'</td><td class="n">'+S0(o.s)+'</td><td class="n">'+P1(tS?o.s/tS:0)+'</td><td class="n">'+pKg(o.s,o.kg)+'</td><td class="n">'+o.sv.size+'</td><td class="n">'+o.u.size+'</td></tr>').join('')+
     '<tr class="xs-tot"><td colspan="3">Total</td><td class="n">'+fKg(tK)+'</td><td class="n">'+S0(tS)+'</td><td class="n">100.0 %</td><td></td><td class="n">'+nS+'</td><td class="n">'+nU+'</td></tr></tbody>';
   const mb = $('#xMas'); mb.hidden = L.length <= 25; mb.textContent = xTodos ? 'Mostrar solo los 25 primeros' : 'Mostrar los '+L.length+' alimentos';
-  // precio por kg o L de un alimento: por UT/OCT (o por servicio si hay una sola UT/OCT)
+  // precio por kg o L de un alimento: cajas y bigotes por UT/OCT; cada punto es el precio que paga un servicio alimentario
   const unA = L.length===1 ? L[0] : null;
-  if (!unA){ $('#xPrecioH').textContent = 'Precio pagado por kg o L'; $('#xPrecioN').textContent = 'Elija un solo alimento (en el segmentador o en la tabla) para comparar el precio que se paga por él en cada UT/OCT.'; $('#xPrecio').innerHTML = ''; return; }
-  const porSv = nU===1, g = {};
-  F.forEach(r=>{ if (!(r.kg>0)) return; const k = porSv ? r.c : r.ut; const o = g[k] || (g[k] = {k, s:0, kg:0, ps:[]}); o.s += r.s; o.kg += r.kg; o.ps.push(r.s/r.kg); });
-  const G = Object.values(g).map(o=>Object.assign(o,{p:o.s/o.kg})).sort((x,y)=>y.p-x.p), ref = tK ? tS/tK : 0;
-  $('#xPrecioH').textContent = 'Precio pagado por kg o L de '+capG(D.alimentos[unA.a][0])+', por '+(porSv?'servicio alimentario':'UT/OCT');
-  $('#xPrecioN').textContent = 'Promedio ponderado (monto entre cantidad) de lo pedido por los servicios'+(porSv?'':' de cada UT/OCT')+'. La línea punteada marca el promedio de la selección: '+pKg(tS,tK)+' por kg o L.';
-  hbars($('#xPrecio'), G.map((o,i)=>{ const sv = porSv ? byCui[o.k] : null, mn = Math.min(...o.ps), mx = Math.max(...o.ps);
-    return {name:(i+1)+'. '+(sv?sv.sa:o.k), value:o.p, label:pKg(o.s,o.kg), go: sv ? sv.cui : null, goUT: !sv ? o.k : null,
-      tip:'<b>'+esc(sv?sv.sa:o.k)+'</b><br>'+pKg(o.s,o.kg)+' por kg o L · '+fKg(o.kg)+' kg o L por '+S0(o.s)+(o.ps.length>1?'<br>Entre servicios: de S/ '+nf2.format(mn)+' a S/ '+nf2.format(mx)+' ('+o.ps.length+' servicios)':'')}; }), {ref});
+  if (!unA){ xCaja = null; $('#xPrecioH').textContent = 'Precio pagado por kg o L, por UT/OCT'; $('#xPrecioN').textContent = 'Elija un solo alimento (en el segmentador o en la tabla) para comparar el precio que pagan por él los servicios de cada UT/OCT.'; $('#xPrecio').innerHTML = ''; return; }
+  const pv = {};   // por servicio: monto y cantidad del alimento
+  F.forEach(r=>{ if (!(r.kg>0)) return; const o = pv[r.c] || (pv[r.c] = {c:r.c, ut:r.ut, s:0, kg:0}); o.s += r.s; o.kg += r.kg; });
+  const g = {};
+  Object.values(pv).forEach(o=>{ const u = g[o.ut] || (g[o.ut] = {ut:o.ut, s:0, kg:0, P:[]}); u.s += o.s; u.kg += o.kg; u.P.push({c:o.c, p:o.s/o.kg, kg:o.kg, s:o.s}); });
+  xCaja = {nom: capG(D.alimentos[unA.a][0]), ref: tK ? tS/tK : 0, rows: Object.values(g)};
+  $('#xPrecioH').textContent = 'Precio pagado por kg o L de '+xCaja.nom+', por UT/OCT';
+  $('#xPrecioN').textContent = 'Cada punto es el precio que paga un servicio alimentario (monto entre cantidad de su pedido). Las filas se ordenan por la mediana, de mayor a menor; las líneas laterales llegan al precio mínimo y al máximo. La línea punteada marca el promedio ponderado de la selección: '+pKg(tS,tK)+' por kg o L. Toque el nombre de una UT/OCT para filtrarla.';
+  cajasPrecio();
 }
+let xCaja = null;
+function cajasPrecio(){
+  const el = $('#xPrecio'); if (!el || !xCaja) return;
+  const tot = UT==='TODAS', ref = xCaja.ref;
+  const rows = xCaja.rows.map(r=>{ const v = r.P.map(x=>x.p).sort((p,q)=>p-q); return Object.assign(r, {v, md: cuantil(v,.5)}); })
+    .sort((x,y)=> y.md-x.md || x.ut.localeCompare(y.ut,'es'));
+  const all = rows.flatMap(r=>r.v); let lo = Math.min(ref, ...all), hi = Math.max(ref, ...all);
+  const rango = Math.max(hi-lo, 0.5), nMax = (el.clientWidth||680) < 520 ? 4 : 7, paso = [0.5,1,2,2.5,5,10,20,25,50,100].find(p=>rango/p<=nMax) || 200;
+  lo = Math.max(0, Math.floor((lo-rango*0.04)/paso)*paso); hi = Math.ceil((hi+rango*0.04)/paso)*paso; if (hi<=lo) hi = lo+paso;
+  const N = rows.length, W = Math.max(320, el.clientWidth || 680);
+  const LW = W<520 ? 118 : 210, RW = 14, RH = N>12 ? 40 : 48, TOP = 26, H = TOP + RH*N + 30;
+  const x = v => LW + (W-LW-RW) * (v-lo)/(hi-lo);
+  const corta = (t,n) => t.length > n ? t.slice(0,n-1)+'…' : t;
+  const fp = v => 'S/ '+nf2.format(v);
+  let g = '';
+  for (let t=lo; t<=hi+1e-9; t+=paso) g += '<line class="ax" x1="'+x(t)+'" x2="'+x(t)+'" y1="'+(TOP-6)+'" y2="'+(TOP+RH*N)+'"/><text x="'+x(t)+'" y="'+(TOP+RH*N+16)+'" text-anchor="middle">'+(Number.isInteger(paso)?nf0.format(t):nf1.format(t))+'</text>';
+  g += '<line x1="'+x(ref)+'" x2="'+x(ref)+'" y1="'+(TOP-6)+'" y2="'+(TOP+RH*N)+'" stroke="var(--ink2)" stroke-width="1.5" stroke-dasharray="4 3"/>'+
+       '<text x="'+x(ref)+'" y="'+(TOP-10)+'" text-anchor="middle" style="fill:var(--ink);font-size:11.5px;font-weight:600">Promedio '+fp(ref)+'</text>';
+  const hb = 10;
+  rows.forEach((row,ri)=>{
+    const s = row.v, yc = TOP + RH*ri + RH/2, q1=cuantil(s,.25), md=row.md, q3=cuantil(s,.75), mn=s[0], mx=s[s.length-1], pp = row.s/row.kg;
+    const quien = v => { const X = row.P.filter(o=>nf2.format(o.p)===nf2.format(v)); const n0 = byCui[X[0].c]; return (n0?esc(n0.sa):'—')+(X.length>1?' y '+(X.length-1)+' más':''); };
+    const tip = '<b>'+esc(row.ut)+'</b> · '+s.length+(s.length===1?' servicio':' servicios')+
+      '<br>Mínimo '+fp(mn)+': '+quien(mn)+'<br>Máximo '+fp(mx)+': '+quien(mx)+
+      '<br>Cuartiles: '+fp(q1)+' · <b>mediana '+fp(md)+'</b> · '+fp(q3)+'<br>Promedio ponderado '+fp(pp)+' · '+fKg(row.kg)+' kg o L por '+S0(row.s);
+    g += '<rect x="'+LW+'" y="'+(yc-RH/2)+'" width="'+(W-LW-RW)+'" height="'+RH+'" fill="transparent" data-tipw data-tip="'+esc(tip)+'"/>';
+    g += (tot ? '<a href="#" class="salink" data-ut="'+esc(row.ut)+'"><text x="0" y="'+(yc-3)+'" style="fill:var(--azul);font-size:12.5px;font-weight:600;text-decoration:underline;cursor:pointer"><title>'+esc(row.ut)+' · toque para filtrar esta UT/OCT</title>'+esc(corta(row.ut, W<520?15:27))+'</text></a>'
+              : '<text x="0" y="'+(yc-3)+'" style="fill:var(--ink);font-size:12.5px;font-weight:600"><title>'+esc(row.ut)+'</title>'+esc(corta(row.ut, W<520?15:27))+'</text>')+
+         '<text x="0" y="'+(yc+12)+'" style="font-size:11px">'+s.length+(s.length===1?' servicio':' servicios')+' · med. '+fp(md)+'</text>';
+    g += '<line x1="'+x(mn)+'" x2="'+x(q1)+'" y1="'+yc+'" y2="'+yc+'" stroke="var(--ink2)" stroke-width="1.5"/><line x1="'+x(q3)+'" x2="'+x(mx)+'" y1="'+yc+'" y2="'+yc+'" stroke="var(--ink2)" stroke-width="1.5"/>'+
+         '<line x1="'+x(mn)+'" x2="'+x(mn)+'" y1="'+(yc-6)+'" y2="'+(yc+6)+'" stroke="var(--ink2)" stroke-width="1.5"/><line x1="'+x(mx)+'" x2="'+x(mx)+'" y1="'+(yc-6)+'" y2="'+(yc+6)+'" stroke="var(--ink2)" stroke-width="1.5"/>'+
+         '<rect x="'+x(q1)+'" y="'+(yc-hb)+'" width="'+Math.max(2,x(q3)-x(q1))+'" height="'+(hb*2)+'" rx="4" fill="var(--azul-soft)" fill-opacity=".85" stroke="var(--azul)" stroke-width="1.5" pointer-events="none"/>'+
+         '<line x1="'+x(md)+'" x2="'+x(md)+'" y1="'+(yc-hb)+'" y2="'+(yc+hb)+'" stroke="var(--ink)" stroke-width="2.5" pointer-events="none"/>'+
+         '<circle cx="'+x(pp)+'" cy="'+yc+'" r="4" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5" pointer-events="none"/>';
+    const op = s.length > 60 ? .35 : .55;
+    row.P.forEach((o,i)=>{ const jy = ((i*37)%23)/23 - .5, sv = byCui[o.c];
+      g += '<circle cx="'+x(o.p)+'" cy="'+(yc + jy*RH*0.5)+'" r="3" fill="var(--azul)" fill-opacity="'+op+'" data-tip="'+esc('<b>'+(sv?esc(sv.sa):'—')+'</b><br>'+fp(o.p)+' por kg o L · '+fKg(o.kg)+' kg o L por '+S0(o.s))+'"/>'; });
+  });
+  el.innerHTML = '<div class="legend" style="margin:2px 0 6px"><span><i class="sw" style="background:var(--azul);opacity:.5;border-radius:50%"></i>Un servicio alimentario</span><span><i class="sw" style="background:var(--azul-soft);border:1.5px solid var(--azul)"></i>50 % central de los servicios (cuartiles)</span><span><i class="sw" style="background:var(--ink);width:3px"></i>Mediana</span><span><i class="sw" style="background:var(--surface);border:1.5px solid var(--ink);border-radius:50%"></i>Promedio ponderado de la UT/OCT</span><span><i class="sw" style="background:transparent;border-left:2px dashed var(--ink2);border-radius:0;width:2px"></i>Promedio de la selección</span></div>'+
+    '<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Precio pagado por kg o L de '+esc(xCaja.nom)+' por UT/OCT">'+g+'</svg>';
+}
+{ let rzX; window.addEventListener('resize', ()=>{ clearTimeout(rzX); rzX = setTimeout(cajasPrecio, 150); }, {signal: AC.signal}); }
 on('click', e=>{ const b = e.target.closest('[data-xd]'); if (!b || b.disabled) return;
   const d = b.dataset.xd, k = d==='ut' ? b.dataset.xk : +b.dataset.xk;
   XS[d].has(k) ? XS[d].delete(k) : XS[d].add(k); xTodos = false; explorar(); });

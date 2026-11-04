@@ -532,96 +532,88 @@ function provRuc(s, k){
 }
 // -------- calidad (todos los envíos vigentes)
 function calidad(){
-  const S = sel(), items = [];
-  $('#calLede').textContent = 'Situaciones que conviene revisar antes de usar estas cifras.';
-  const tw = S.filter(s=>s.twin.length); const claves = [...new Set(tw.map(s=>[s.cui,...s.twin].sort().join(' y ')))]; const pares = claves.length;
-  if (pares) items.push([pares, 'Mismo contenido enviado con dos CUI', 'Envíos con el mismo presupuesto, costo y usuarios bajo CUI distintos: '+
-    claves.map(k=>{const s=byCui[k.split(' y ')[0]]; return saA(s)+' (CUI '+k+')';}).join('; ')+'. Puede ser un mismo archivo enviado dos veces con otro CUI; se cuentan dos veces en las sumas.']);
+  const S = sel();
+  $('#calLede').textContent = 'Situaciones que conviene revisar antes de usar estas cifras. Arriba, el resumen por tipo de alerta; debajo, el detalle por UT/OCT.';
+  const fh = f=>f.slice(8,10)+'/'+f.slice(5,7)+' '+f.slice(11,16);
+  const utDeS = s => s.ut || s.utEnv || 'Sin UT/OCT';
+  const A = [];   // alertas: {t: tipo, ut, h: texto del detalle}
+  const al = (t, s, h) => A.push({t, ut: s ? utDeS(s) : 'Sin UT/OCT', h});
+  // Mismo contenido enviado con dos CUI (gemelos): una alerta por par, en la UT/OCT del primero
+  const vistos = new Set();
+  S.filter(s=>s.twin.length).forEach(s=>{ const k=[s.cui,...s.twin].sort().join(' y '); if (vistos.has(k)) return; vistos.add(k);
+    const ot = k.split(' y ').filter(c=>c!==s.cui).map(c=>byCui[c]).filter(Boolean);
+    al('twin', s, saA(s)+(ot.length?' y '+ot.map(saA).join(' y '):'')+' (CUI '+k+')'); });
   // CUI que no corresponde al servicio: el nombre, el comité y el distrito del envío no son los del padrón para ese CUI.
-  // El envío vigente se decide por el CUI del padrón, así que los envíos repetidos con CUI equivocado se descartan y el servicio
-  // cuyo CUI fue usado por otro recupera su propio envío.
-  const selCui = new Set(S.map(s=>s.cui)), fh = f=>f.slice(8,10)+'/'+f.slice(5,7)+' '+f.slice(11,16);
   // No se alertan los envíos ya corregidos con un reenvío: el envío que llegó con un CUI equivocado y luego se reenvió con el correcto
   // (descartado), ni el servicio que recupera su envío porque el otro servicio que usó su CUI ya lo corrigió (rescatado con descartado).
   // Sí se alerta el rescatado cuyo CUI sigue usando otro servicio en su envío vigente (ese otro figura en cuiMal).
   const corregidos = new Set((D.descartados||[]).map(d=>String(d[0])));
-  const cuiMal = S.filter(s=>s.cuiSug), desc = [], resc = S.filter(s=>s.rescatado && !corregidos.has(String(s.cui)));
-  const partes = [], porUTe = [];   // porUTe: alertas de envío por UT/OCT {ut, t: 'cui'|'fuera', h}
-  const utDeS = s => s.ut || s.utEnv || 'Sin UT/OCT';
   const cgTxt = s => 'CG '+esc(s.cg)+(s.ut && s.utEnv && nUT(s.ut)!==nUT(s.utEnv) ? '; registrado como '+esc(s.utEnv) : '');
-  cuiMal.forEach(s=> porUTe.push({ut:utDeS(s), t:'cui', h: saA(s)+' ('+cgTxt(s)+'): registró el CUI '+esc(s.cuiEnv)+', que '+(s.padSA?'en el padrón es '+esc(s.padSA)+(nUT(s.padUTcui)!==nUT(utDeS(s))?' ('+esc(s.padUTcui)+', CG '+esc(s.padCG)+')':' (CG '+esc(s.padCG)+')'):'no figura en el padrón')+
-    (s.cuiSug==='?' ? '; no se encontró en el padrón un servicio con este nombre y comité' : '; en el padrón este servicio tiene el CUI <b>'+s.cui+'</b>, con el que se cuenta')}));
-  desc.forEach(d=>{ const s=byCui[d[1]]; porUTe.push({ut: s?utDeS(s):'Sin UT/OCT', t:'cui', h:(s?saA(s):esc(d[2]))+': el envío del '+fh(d[3])+' llegó con el CUI '+esc(d[0])+' y después el mismo servicio envió con su CUI correcto, <b>'+d[1]+'</b>; se descarta el primero para no contarlo dos veces'}); });
-  resc.forEach(s=> porUTe.push({ut:utDeS(s), t:'cui', h: saA(s)+' (CUI '+s.cui+') envió el '+fh(s.fecha)+', pero ese envío había quedado reemplazado por el de otro servicio que usó su CUI; se recupera como su envío vigente'}));
-  cuiMal.forEach(s=> partes.push(saA(s)+' (CG '+esc(s.cg)+', '+esc(s.utEnv)+'): registró el CUI '+esc(s.cuiEnv)+', que '+(s.padSA?'en el padrón es '+esc(s.padSA)+' ('+esc(s.padUTcui)+', CG '+esc(s.padCG)+')':'no figura en el padrón')+
+  S.filter(s=>s.cuiSug).forEach(s=> al('cui', s, saA(s)+' ('+cgTxt(s)+'): registró el CUI '+esc(s.cuiEnv)+', que '+(s.padSA?'en el padrón es '+esc(s.padSA)+(nUT(s.padUTcui)!==nUT(utDeS(s))?' ('+esc(s.padUTcui)+', CG '+esc(s.padCG)+')':' (CG '+esc(s.padCG)+')'):'no figura en el padrón')+
     (s.cuiSug==='?' ? '; no se encontró en el padrón un servicio con este nombre y comité' : '; en el padrón este servicio tiene el CUI <b>'+s.cui+'</b>, con el que se cuenta')));
-  desc.forEach(d=>{ const s=byCui[d[1]]; partes.push((s?saA(s):esc(d[2]))+': el envío del '+fh(d[3])+' llegó con el CUI '+esc(d[0])+' y después el mismo servicio envió con su CUI correcto, <b>'+d[1]+'</b>; se descarta el primero para no contarlo dos veces'); });
-  resc.forEach(s=> partes.push(saA(s)+' (CUI '+s.cui+') envió el '+fh(s.fecha)+', pero ese envío había quedado reemplazado por el de otro servicio que usó su CUI; se recupera como su envío vigente'));
-  if (partes.length) items.push([cuiMal.length+desc.length+resc.length, 'CUI que no corresponde al servicio', partes.join('; ')+'. El envío vigente, el avance y la unidad territorial se calculan con el CUI del padrón; conviene corregir el CUI en la herramienta.']);
-  const fuera = S.filter(s=>!s.padron);
-  fuera.forEach(s=> porUTe.push({ut:utDeS(s), t:'fuera', h: saA(s)+' (CUI '+s.cui+', CG '+esc(s.cg)+')'}));
-  if (fuera.length) items.push([fuera.length, 'CUI que no está en el padrón', fuera.map(s=>saA(s)+' (CUI '+s.cui+', '+esc(s.utEnv)+')').join('; ')+'. Se cuenta en el avance y se suma a los esperados de su UT/OCT.']);
-  const enSel = new Set(S.map(s=>s.cui));
-  const ded = S.filter(s=>s.ambDed);
-  if (ded.length) items.push([ded.length, 'Comité de gestión fuera del listado de CG', 'No se encontró el código del comité en el listado de CG; su ámbito se dedujo del presupuesto registrado: '+ded.map(s=>saA(s)+' (CG '+esc(s.cg)+', código '+esc(s.cgCod||'sin código')+')').join('; ')+'.']);
-  const ut = S.filter(s=>s.padron && s.ut.toUpperCase()!==String(s.utEnv).toUpperCase());
-  if (ut.length) items.push([ut.length, 'Unidad territorial distinta a la del padrón', ut.map(s=>saA(s)+': escrita como '+esc(s.utEnv)+', padrón '+esc(s.ut)).join('; ')+'. Aquí se cuenta con la del padrón.']);
-  const reenv = sum(S.map(s=>s.reenv)), envTot = S.length + reenv;
-  items.push([reenv, 'Envíos reemplazados por un reenvío', (reenv===0?'Ningún envío fue reemplazado por un reenvío.':reenv+' de '+envTot+' envíos '+(reenv===1?'fue reemplazado':'fueron reemplazados')+' porque el mismo servicio volvió a enviar. No afecta las cifras: solo cuenta el último.')]);
-  // RUC de los proveedores: dígito verificador de SUNAT (11 dígitos, pesos 5-4-3-2-7-6-5-4-3-2) y un solo RUC por proveedor
+  S.filter(s=>s.rescatado && !corregidos.has(String(s.cui))).forEach(s=> al('cui', s, saA(s)+' (CUI '+s.cui+') envió el '+fh(s.fecha)+', pero ese envío había quedado reemplazado por el de otro servicio que usó su CUI; se recupera como su envío vigente'));
+  S.filter(s=>!s.padron).forEach(s=> al('fuera', s, saA(s)+' (CUI '+s.cui+', CG '+esc(s.cg)+')'));
+  S.filter(s=>s.ambDed).forEach(s=> al('ded', s, saA(s)+' (CG '+esc(s.cg)+', código '+esc(s.cgCod||'sin código')+')'));
+  S.filter(s=>s.padron && nUT(s.ut)!==nUT(s.utEnv)).forEach(s=> al('utd', s, saA(s)+': escrita como '+esc(s.utEnv)));
   // Proveedores frente a los resultados de adquisición 2026: en la app se usa el proveedor adjudicado al CG (razón social y RUC
   // estandarizados); aquí se alerta cuando el envío registra datos distintos. Las diferencias de forma (orden de apellidos y nombres,
-  // tildes, signos, espacios, E.I.R.L./EIRL) no cuentan.
+  // tildes, signos, espacios, E.I.R.L./EIRL) no cuentan. RUC válido: 11 dígitos y dígito verificador de SUNAT.
   const PV = [['NP','no perecibles'],['P','perecibles']];
   const adjTxt = a => a.map(([r,n])=>esc(n)+' (RUC '+esc(rucVer(r))+')').join(' y ');
   const envTxt = (s,k) => esc(s['env'+k])+' ('+(s['ruc'+k]?'RUC '+esc(rucVer(s['ruc'+k])):'sin RUC')+')';
   const sunatDe = (s,r) => (s.of||{})[r] || (D.rucOf||{})[r];
-  const L = {ruc:[], nom:[], otro:[], sinadj:[], malos:[]};
   S.forEach(s=>PV.forEach(([k,t])=>{ const st=s['st'+k], a=s['adj'+k]||[], r=s['ruc'+k]||'';
-    if (st==='ruc') L.ruc.push(saA(s)+' ('+t+'): registró '+envTxt(s,k)+(sunatDe(s,r)?', RUC que según SUNAT corresponde a '+esc(sunatDe(s,r)):'')+'; adjudicado: <b>'+adjTxt(a.filter(x=>x[0]===s['rucStd'+k]).length?a.filter(x=>x[0]===s['rucStd'+k]):a)+'</b>');
-    else if (st==='nom') L.nom.push(saA(s)+' ('+t+'): registró '+esc(s['env'+k])+'; según el RUC '+esc(rucVer(s['rucStd'+k]))+' es <b>'+esc(s['prov'+k])+'</b>');
-    else if (st==='otro') L.otro.push(saA(s)+' ('+t+'): registró '+envTxt(s,k)+(sunatDe(s,r)&&sunatDe(s,r)!==s['env'+k]?', RUC que según SUNAT corresponde a '+esc(sunatDe(s,r)):'')+'; adjudicado: <b>'+adjTxt(a)+'</b>');
-    else if (st==='sinadj'){ if (s['adj'+k]) L.sinadj.push(saA(s)+' ('+t+', CG '+esc(s.cg)+(s.cgCod?' código '+esc(s.cgCod):'')+')');
-      if (!rucOk(r)) L.malos.push(saA(s)+' ('+t+': '+esc(s['env'+k])+', '+(r?rucMalTxt(r):'sin RUC')+')'); }
+    if (st==='ruc') al('ruc', s, saA(s)+' ('+t+'): registró '+envTxt(s,k)+(sunatDe(s,r)?', RUC que según SUNAT corresponde a '+esc(sunatDe(s,r)):'')+'; adjudicado: <b>'+adjTxt(a.filter(x=>x[0]===s['rucStd'+k]).length?a.filter(x=>x[0]===s['rucStd'+k]):a)+'</b>');
+    else if (st==='nom') al('nom', s, saA(s)+' ('+t+'): registró '+esc(s['env'+k])+'; según el RUC '+esc(rucVer(s['rucStd'+k]))+' es <b>'+esc(s['prov'+k])+'</b>');
+    else if (st==='otro') al('otro', s, saA(s)+' ('+t+'): registró '+envTxt(s,k)+(sunatDe(s,r)&&sunatDe(s,r)!==s['env'+k]?', RUC que según SUNAT corresponde a '+esc(sunatDe(s,r)):'')+'; adjudicado: <b>'+adjTxt(a)+'</b>');
+    else if (st==='sinadj'){ if (s['adj'+k]) al('sinadj', s, saA(s)+' ('+t+', CG '+esc(s.cg)+(s.cgCod?' código '+esc(s.cgCod):'')+')');
+      if (!rucOk(r)) al('malos', s, saA(s)+' ('+t+': '+esc(s['env'+k])+', '+(r?rucMalTxt(r):'sin RUC')+')'); }
   }));
+  S.filter(s=>s.presT - s.costT < -1).forEach(s=> al('sob', s, saA(s)+': costo '+S2(s.costT)+', presupuesto calculado '+S2(s.presT)+' ('+nf0.format(s.ejec*100)+' %)'));
   const fte = 'los resultados de adquisición de alimentos 2026'+(D.adjCorte?' ('+esc(D.adjCorte)+')':'');
-  if (L.otro.length) items.push([L.otro.length, 'Proveedor distinto al adjudicado', 'El envío registra un proveedor que no es el adjudicado al comité de gestión en '+fte+': '+L.otro.join('; ')+'. En el tablero se muestra el adjudicado.']);
-  if (L.ruc.length) items.push([L.ruc.length, 'RUC distinto al del proveedor adjudicado', 'El proveedor es el adjudicado, pero el RUC registrado en el envío no es el suyo: '+L.ruc.join('; ')+'. Conviene corregir el RUC en la herramienta.']);
-  if (L.nom.length) items.push([L.nom.length, 'Razón social distinta a la del RUC adjudicado', 'El RUC es el del proveedor adjudicado, pero la razón social registrada no coincide con la estandarizada (no se cuentan diferencias de forma, como el orden de apellidos y nombres o E.I.R.L. frente a EIRL): '+L.nom.join('; ')+'.']);
-  if (L.sinadj.length) items.push([L.sinadj.length, 'Comité de gestión sin proveedor adjudicado registrado', 'No se encontró el comité de gestión en '+fte+', así que se muestra el proveedor tal como llegó en el envío: '+L.sinadj.join('; ')+'.']);
-  if (L.malos.length) items.push([L.malos.length, 'RUC de proveedor no válido', 'El RUC registrado no tiene 11 dígitos o no corresponde a un RUC válido: '+L.malos.join('; ')+'.']);
-  const sob = S.filter(s=>s.presT - s.costT < -1);
-  items.push([sob.length, 'Costo mayor al presupuesto', sob.length ? sob.map(s=>saA(s)).join(', ') : 'Ningún envío vigente supera su presupuesto.']);
-  if (D.envVig < 5) items.push([D.envVig, 'Pocos envíos en este mes', 'El consolidado de '+mesTxt(D.periodo)+' tiene solo '+D.envVig+' envío'+(D.envVig===1?'':'s')+' vigente'+(D.envVig===1?'':'s')+'; puede tratarse de una prueba de la herramienta. Use el selector de mes para ver otro periodo.']);
-  const obsHTML = its => its.map(([n,h,p])=>'<article><div class="num"'+((h.startsWith('Costo mayor')&&!n)||h.startsWith('Envíos reemplazados')||h.startsWith('Envíos de otros')?' style="color:var(--muted)"':'')+'>'+n+'</div><h4>'+h+'</h4><p>'+p+'</p></article>').join('');
-  // sin observaciones: recuadro verde de confirmación; los conteos en cero no se listan y los reenvíos quedan como dato informativo
-  const info = h => /^Envíos reemplazados|^Pocos envíos/.test(h);
+  // tipos de alerta: [clave, título, explicación, etiqueta corta en singular, en plural]
+  const TIPOS = [
+    ['twin','Mismo contenido enviado con dos CUI','Envíos con el mismo presupuesto, costo y usuarios bajo CUI distintos. Puede ser un mismo archivo enviado dos veces con otro CUI; se cuentan dos veces en las sumas.','par con el mismo contenido','pares con el mismo contenido'],
+    ['cui','CUI que no corresponde al servicio','El envío vigente, el avance y la unidad territorial se calculan con el CUI del padrón; conviene corregir el CUI en la herramienta.','CUI que no corresponde','CUI que no corresponden'],
+    ['fuera','CUI que no está en el padrón','Se cuenta en el avance y se suma a los esperados de su UT/OCT.','fuera del padrón','fuera del padrón'],
+    ['ded','Comité de gestión fuera del listado de CG','No se encontró el código del comité en el listado de CG; su ámbito se dedujo del presupuesto registrado.','CG fuera del listado','CG fuera del listado'],
+    ['utd','Unidad territorial distinta a la del padrón','Aquí se cuenta con la unidad territorial del padrón.','UT distinta','UT distintas'],
+    ['otro','Proveedor distinto al adjudicado','El envío registra un proveedor que no es el adjudicado al comité de gestión en '+fte+'. En el tablero se muestra el adjudicado.','proveedor distinto','proveedores distintos'],
+    ['ruc','RUC distinto al del proveedor adjudicado','El proveedor es el adjudicado, pero el RUC registrado en el envío no es el suyo. Conviene corregir el RUC en la herramienta.','RUC distinto','RUC distintos'],
+    ['nom','Razón social distinta a la del RUC adjudicado','El RUC es el del proveedor adjudicado, pero la razón social registrada no coincide con la estandarizada (no se cuentan diferencias de forma, como el orden de apellidos y nombres o E.I.R.L. frente a EIRL).','razón social distinta','razones sociales distintas'],
+    ['sinadj','Comité de gestión sin proveedor adjudicado registrado','No se encontró el comité de gestión en '+fte+', así que se muestra el proveedor tal como llegó en el envío.','CG sin adjudicación','CG sin adjudicación'],
+    ['malos','RUC de proveedor no válido','El RUC registrado no tiene 11 dígitos o no corresponde a un RUC válido.','RUC no válido','RUC no válidos'],
+    ['sob','Costo mayor al presupuesto','El costo del menú supera el presupuesto calculado del servicio en más de S/ 1.','costo sobre el presupuesto','costos sobre el presupuesto']
+  ];
+  // datos informativos (no son alertas): reenvíos y meses de prueba
+  const reenv = sum(S.map(s=>s.reenv)), envTot = S.length + reenv;
+  const card = (n, tit, p, gris) => '<article><div class="num"'+(gris?' style="color:var(--muted)"':'')+'>'+n+'</div><h4>'+tit+'</h4><p>'+p+'</p></article>';
+  const infoCards = (reenv ? card(reenv, 'Envíos reemplazados por un reenvío', reenv+' de '+envTot+' envíos '+(reenv===1?'fue reemplazado':'fueron reemplazados')+' porque el mismo servicio volvió a enviar. No afecta las cifras: solo cuenta el último.', true) : '')
+    + (D.envVig < 5 ? card(D.envVig, 'Pocos envíos en este mes', 'El consolidado de '+mesTxt(D.periodo)+' tiene solo '+D.envVig+' envío'+(D.envVig===1?'':'s')+' vigente'+(D.envVig===1?'':'s')+'; puede tratarse de una prueba de la herramienta. Use el selector de mes para ver otro periodo.', true) : '');
+  const reUT = {}, envUT = {}; S.forEach(s=>{ const u=utDeS(s); reUT[u]=(reUT[u]||0)+s.reenv; envUT[u]=(envUT[u]||0)+1+s.reenv; });
   const okBox = msg => '<div class="okbox" style="margin-bottom:10px"><span class="okic" aria-hidden="true">✓</span><span>'+msg+'</span></div>';
   const quien = UT==='TODAS' ? 'los envíos vigentes seleccionados' : 'los envíos vigentes '+esc(deSel());
-  const vis = items.filter(([n,h])=>n || info(h));
-  const hayObs = vis.some(([n,h])=>!info(h));
-  $('#obs').innerHTML = (hayObs ? '' : okBox('Sin observaciones en '+quien+': los CUI corresponden al padrón, los proveedores y RUC coinciden con los adjudicados y ningún costo supera el presupuesto.')) + obsHTML(vis.filter(([n,h])=>n));
-  // en Alertas sobre los envíos no se consideran los CUI que no están en el padrón (siguen en Calidad de los datos)
-  const envIt = items.filter(([n,h])=>/^CUI que no corresponde|^Envíos reemplazados/.test(h));
-  const envAl = envIt.filter(([n,h])=>n && !info(h));
-  // Alertas sobre los envíos, organizadas por UT/OCT (en orden alfabético): un bloque por UT/OCT con sus alertas por tipo y sus reenvíos
-  const TIPOS_E = [['cui','CUI que no corresponde al servicio','El envío vigente, el avance y la unidad territorial se calculan con el CUI del padrón; conviene corregir el CUI en la herramienta.']];
-  const resumenE = TIPOS_E.map(([t,tit,exp])=>{ const n = porUTe.filter(o=>o.t===t).length; if (!n) return '';
-      const nu = new Set(porUTe.filter(o=>o.t===t).map(o=>o.ut)).size;
-      return '<article><div class="num">'+n+'</div><h4>'+tit+'</h4><p>'+(UT==='TODAS' ? 'En '+nu+(nu===1?' UT/OCT':' UT/OCT')+'. ' : '')+exp+'</p></article>'; }).join('')
-    + envIt.filter(([n,h])=>n && info(h)).map(([n,h,p])=>'<article><div class="num" style="color:var(--muted)">'+n+'</div><h4>'+h+'</h4><p>'+p+'</p></article>').join('');
-  const gUT = {}; porUTe.filter(o=>TIPOS_E.some(([t])=>t===o.t)).forEach(o=>(gUT[o.ut]=gUT[o.ut]||[]).push(o));
-  const reUT = {}, envUT = {}; S.forEach(s=>{ const u=utDeS(s); reUT[u]=(reUT[u]||0)+s.reenv; envUT[u]=(envUT[u]||0)+1+s.reenv; });
-  const utsAl = Object.keys(gUT).sort((x,y)=>x.localeCompare(y,'es'));
-  const unaUT = UT!=='TODAS' || utsAl.length===1;
-  const bloque = u => { const L = gUT[u];
-    const cnt = TIPOS_E.map(([t,tit])=>{ const n=L.filter(o=>o.t===t).length; return n ? n+' '+(t==='cui' ? (n===1?'CUI que no corresponde':'CUI que no corresponden') : 'fuera del padrón') : ''; }).filter(Boolean).join(' · ');
-    const re = reUT[u] ? '<p class="utre">'+reUT[u]+' de '+envUT[u]+' envíos '+(reUT[u]===1?'fue reemplazado':'fueron reemplazados')+' por un reenvío (no afecta las cifras).</p>' : '';
-    return '<details class="utal"'+(unaUT?' open':'')+'><summary><span class="utn">'+esc(u)+'</span><span class="utc">'+cnt+'</span></summary>'+
-      TIPOS_E.map(([t,tit])=>{ const X=L.filter(o=>o.t===t); return X.length ? '<h5>'+tit+'</h5><ul>'+X.map(o=>'<li>'+o.h+'</li>').join('')+'</ul>' : ''; }).join('')+re+'</details>'; };
-  $('#obsEnv').innerHTML = (envAl.length ? '' : okBox('Sin alertas sobre '+quien+': todos los CUI corresponden al servicio en el padrón.')) + resumenE +
-    (utsAl.length ? '<div class="utals"><div class="utals-h"><h4>'+(unaUT ? 'Detalle' : 'Por UT/OCT · '+utsAl.length+' con alertas')+'</h4>'+
-      (unaUT ? '' : '<span class="utals-b"><button type="button" data-utals="1">Abrir todas</button><button type="button" data-utals="0">Cerrar todas</button></span>')+'</div>'+utsAl.map(bloque).join('')+'</div>' : '');
+  // Una sección de alertas: resumen por tipo y, debajo, un bloque desplegable por UT/OCT (orden alfabético) con sus alertas por tipo
+  function seccion(el, claves, okMsg, info){
+    const Ts = TIPOS.filter(T=>claves.includes(T[0])), X = A.filter(o=>claves.includes(o.t));
+    const resumen = Ts.map(([t,tit,exp])=>{ const L = X.filter(o=>o.t===t); if (!L.length) return '';
+        const nu = new Set(L.map(o=>o.ut)).size;
+        return card(L.length, tit, (UT==='TODAS' ? 'En '+nu+' UT/OCT. ' : '')+exp); }).join('');
+    const g = {}; X.forEach(o=>(g[o.ut]=g[o.ut]||[]).push(o));
+    const uts = Object.keys(g).sort((x,y)=>x.localeCompare(y,'es'));
+    const una = UT!=='TODAS' || uts.length===1;
+    const bloque = u => { const L = g[u];
+      const cnt = Ts.map(([t,,,s1,sN])=>{ const n=L.filter(o=>o.t===t).length; return n ? n+' '+(n===1?s1:sN) : ''; }).filter(Boolean).join(' · ');
+      const re = reUT[u] ? '<p class="utre">'+reUT[u]+' de '+envUT[u]+' envíos '+(reUT[u]===1?'fue reemplazado':'fueron reemplazados')+' por un reenvío (no afecta las cifras).</p>' : '';
+      return '<details class="utal"'+(una?' open':'')+'><summary><span class="utn">'+esc(u)+'</span><span class="utc">'+cnt+'</span></summary>'+
+        Ts.map(([t,tit])=>{ const Y=L.filter(o=>o.t===t); return Y.length ? '<h5>'+tit+'</h5><ul>'+Y.map(o=>'<li>'+o.h+'</li>').join('')+'</ul>' : ''; }).join('')+re+'</details>'; };
+    el.innerHTML = (X.length ? '' : okBox(okMsg)) + resumen + info +
+      (uts.length ? '<div class="utals"><div class="utals-h"><h4>'+(una ? 'Detalle' : 'Por UT/OCT · '+uts.length+' con alertas')+'</h4>'+
+        (una ? '' : '<span class="utals-b"><button type="button" data-utals="1">Abrir todas</button><button type="button" data-utals="0">Cerrar todas</button></span>')+'</div>'+uts.map(bloque).join('')+'</div>' : '');
+  }
+  seccion($('#obs'), TIPOS.map(T=>T[0]), 'Sin observaciones en '+quien+': los CUI corresponden al padrón, los proveedores y RUC coinciden con los adjudicados y ningún costo supera el presupuesto.', infoCards);
+  // en Alertas sobre los envíos solo los CUI que no corresponden al servicio (los CUI fuera del padrón siguen en Calidad de los datos)
+  seccion($('#obsEnv'), ['cui'], 'Sin alertas sobre '+quien+': todos los CUI corresponden al servicio en el padrón.', reenv ? card(reenv, 'Envíos reemplazados por un reenvío', reenv+' de '+envTot+' envíos '+(reenv===1?'fue reemplazado':'fueron reemplazados')+' porque el mismo servicio volvió a enviar. No afecta las cifras: solo cuenta el último.', true) : '');
 }
 
 // -------- ir al detalle de un servicio desde cualquier nombre
@@ -1629,7 +1621,7 @@ async function exportarPNG(btn){
   }
 }
 botonesPNG();
-on('click', e=>{ const b = e.target.closest('[data-utals]'); if (!b) return; document.querySelectorAll('#obsEnv details.utal').forEach(d=>{ d.open = b.dataset.utals==='1'; }); });
+on('click', e=>{ const b = e.target.closest('[data-utals]'); if (!b) return; (b.closest('.utals')||document).querySelectorAll('details.utal').forEach(d=>{ d.open = b.dataset.utals==='1'; }); });
 on('click', e=>{ const b = e.target.closest('.pngbtn'); if (b){ e.preventDefault(); exportarPNG(b); } });
 
 function render(){ titulosUT(); kpis(); coberturaNut(); avance(); porDia(); ultimos(); calidad(); ejec(); nino(); foods(); alertasAporte(); resumenCob(); resumenMacro(); graficoMacro(); alertasMacro(); prov(); detalle(); if(!$('#vMen').hidden) menuSemanal(true); }

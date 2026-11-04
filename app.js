@@ -1,4 +1,15 @@
 function APP(D, AC){
+// Nombres de UT/OCT equivalentes: lo que llega como "CALLAO" es "CALLAO Y LIMA NORTE" (y "LIMA PROVINCIA" es "LIMA PROVINCIAS")
+// para todo propósito: envíos, padrón, filtros, avance y alertas.
+{   // idempotente: se puede aplicar de nuevo cuando llegan datos o padrón nuevos
+  const sinT = u => String(u==null?'':u).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim();
+  const EQ = {'CALLAO':'CALLAO Y LIMA NORTE', 'LIMA PROVINCIA':'LIMA PROVINCIAS'};
+  const std = u => (u!=null && EQ[sinT(u)]) || u;
+  (D.sa||[]).forEach(s=>{ s.ut = std(s.ut); s.utEnv = std(s.utEnv); if (s.padUTcui) s.padUTcui = std(s.padUTcui); });
+  (D.envs||[]).forEach(r=>{ r[4] = std(r[4]); });
+  if (D.padUT){ const P = {}; Object.keys(D.padUT).forEach(k=>{ const k2 = std(k); P[k2] = (P[k2]||0) + D.padUT[k]; }); D.padUT = P; }
+  [D.pad, window.__PAD].forEach(L=>{ if (Array.isArray(L)) L.forEach(p=>{ if (p) p[0] = std(p[0]); }); });
+}
 const on = (t,f,o) => document.addEventListener(t,f,Object.assign({signal:AC.signal},o||{}));
 const $ = s => document.querySelector(s);
 const nf0 = new Intl.NumberFormat('es-PE',{maximumFractionDigits:0});
@@ -52,7 +63,7 @@ const secNom = () => SEC && SECT[SEC] ? SECT[SEC].n : '';
 // filtros: sectorista (SEC), UT/OCT, comité de gestión (CG) y servicio alimentario (SAF), en cascada: elegir un sectorista limita
 // las UT/OCT; elegir un comité o un servicio fija su UT/OCT
 let SEC = '', UT = 'TODAS', CG = '', SAF = '';
-try { SEC = localStorage.getItem('envios_sec')||''; let k = localStorage.getItem('envios_ut'); if (k==='LIMA PROVINCIA') k='LIMA PROVINCIAS'; if (k) UT = k; CG = localStorage.getItem('envios_cg')||''; SAF = localStorage.getItem('envios_saf')||''; } catch(e) {}
+try { SEC = localStorage.getItem('envios_sec')||''; let k = localStorage.getItem('envios_ut'); if (k==='LIMA PROVINCIA') k='LIMA PROVINCIAS'; if (k==='CALLAO') k='CALLAO Y LIMA NORTE'; if (k) UT = k; CG = localStorage.getItem('envios_cg')||''; SAF = localStorage.getItem('envios_saf')||''; } catch(e) {}
 if (!SECT[SEC]) SEC = '';
 const enSec = u => !SEC || SECT[SEC].set.has(nUT(u));
 const uts = [...new Set(D.sa.map(s=>s.ut))].sort();

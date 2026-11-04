@@ -569,7 +569,7 @@ function calidad(){
     else if (st==='sinadj'){ if (s['adj'+k]) al('sinadj', s, saA(s)+' ('+t+', CG '+esc(s.cg)+(s.cgCod?' código '+esc(s.cgCod):'')+')');
       if (!rucOk(r)) al('malos', s, saA(s)+' ('+t+': '+esc(s['env'+k])+', '+(r?rucMalTxt(r):'sin RUC')+')'); }
   }));
-  S.filter(s=>s.presT - s.costT < -1).forEach(s=> al('sob', s, saA(s)+': costo '+S2(s.costT)+', presupuesto calculado '+S2(s.presT)+' ('+nf0.format(s.ejec*100)+' %)'));
+  // El costo mayor al presupuesto no se alerta aquí (se ve en Uso del presupuesto y en el detalle por servicio).
   const fte = 'los resultados de adquisición de alimentos 2026'+(D.adjCorte?' ('+esc(D.adjCorte)+')':'');
   // tipos de alerta: [clave, título, explicación, etiqueta corta en singular, en plural]
   const TIPOS = [
@@ -582,8 +582,7 @@ function calidad(){
     ['ruc','RUC distinto al del proveedor adjudicado','El proveedor es el adjudicado, pero el RUC registrado en el envío no es el suyo. Conviene corregir el RUC en la herramienta.','RUC distinto','RUC distintos'],
     ['nom','Razón social distinta a la del RUC adjudicado','El RUC es el del proveedor adjudicado, pero la razón social registrada no coincide con la estandarizada (no se cuentan diferencias de forma, como el orden de apellidos y nombres o E.I.R.L. frente a EIRL).','razón social distinta','razones sociales distintas'],
     ['sinadj','Comité de gestión sin proveedor adjudicado registrado','No se encontró el comité de gestión en '+fte+', así que se muestra el proveedor tal como llegó en el envío.','CG sin adjudicación','CG sin adjudicación'],
-    ['malos','RUC de proveedor no válido','El RUC registrado no tiene 11 dígitos o no corresponde a un RUC válido.','RUC no válido','RUC no válidos'],
-    ['sob','Costo mayor al presupuesto','El costo del menú supera el presupuesto calculado del servicio en más de S/ 1.','costo sobre el presupuesto','costos sobre el presupuesto']
+    ['malos','RUC de proveedor no válido','El RUC registrado no tiene 11 dígitos o no corresponde a un RUC válido.','RUC no válido','RUC no válidos']
   ];
   // datos informativos (no son alertas): reenvíos y meses de prueba
   const reenv = sum(S.map(s=>s.reenv)), envTot = S.length + reenv;
@@ -611,7 +610,7 @@ function calidad(){
       (uts.length ? '<div class="utals"><div class="utals-h"><h4>'+(una ? 'Detalle' : 'Por UT/OCT · '+uts.length+' con alertas')+'</h4>'+
         (una ? '' : '<span class="utals-b"><button type="button" data-utals="1">Abrir todas</button><button type="button" data-utals="0">Cerrar todas</button></span>')+'</div>'+uts.map(bloque).join('')+'</div>' : '');
   }
-  seccion($('#obs'), TIPOS.map(T=>T[0]), 'Sin observaciones en '+quien+': los CUI corresponden al padrón, los proveedores y RUC coinciden con los adjudicados y ningún costo supera el presupuesto.', infoCards);
+  seccion($('#obs'), TIPOS.map(T=>T[0]), 'Sin observaciones en '+quien+': los CUI corresponden al padrón y los proveedores y RUC coinciden con los adjudicados.', infoCards);
   // en Alertas sobre los envíos solo los CUI que no corresponden al servicio (los CUI fuera del padrón siguen en Calidad de los datos)
   seccion($('#obsEnv'), ['cui'], 'Sin alertas sobre '+quien+': todos los CUI corresponden al servicio en el padrón.', reenv ? card(reenv, 'Envíos reemplazados por un reenvío', reenv+' de '+envTot+' envíos '+(reenv===1?'fue reemplazado':'fueron reemplazados')+' porque el mismo servicio volvió a enviar. No afecta las cifras: solo cuenta el último.', true) : '');
 }

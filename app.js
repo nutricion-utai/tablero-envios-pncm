@@ -2080,7 +2080,7 @@ on('click', e=>{ const b = e.target.closest('.pngbtn'); if (b){ e.preventDefault
 // bloque está en Motor.gs). Promedios: en la UT/OCT y en el total nacional cada servicio pesa igual; dentro de un servicio, cada
 // grupo de edad pesa según sus niñas y niños. En lo que se comparte con las UT/OCT van cifras, sin calificativos entre unidades.
 const DVM = window.Diversidad;
-let dvT = 1, dvEd = '', dvOrdK = 'prom', dvOrdD = -1, dvSA = null, dvDia = null;
+let dvT = 1, dvEd = '', dvOrdK = 'prom', dvOrdD = -1, dvSA = null, dvDia = null, dvPun = null;
 try { const t = localStorage.getItem('envios_dvT'); if (t!==null && /^[012]$/.test(t)) dvT = +t; const e = localStorage.getItem('envios_dvEd'); if (e!==null && /^[0-3]?$/.test(e)) dvEd = e; } catch(_) {}
 Object.assign(ICO_TARJ, {'puntaje promedio':'pct', 'rango diario':'dia', 'menús con 5 o más grupos':'meta', 'alimentos distintos por semana':'kcal', 'servicios evaluados':'sa'});
 const dvEdad = () => dvEd==='' ? null : +dvEd;
@@ -2099,10 +2099,10 @@ const dvBar = (v, ref, max) => '<div class="dvbar"><div class="tr"><span style="
 // barras horizontales con referencia propia en cada fila (rows: {nm, v, txt, sub, cls, ref, tip})
 function dvBarras(el, rows, max){
   el.className = 'dv-b';
-  el.innerHTML = rows.map(r=>'<div class="nm '+(r.cls||'')+'" title="'+esc(r.title||'')+'">'+r.nm+'</div>'+
-    '<div class="tr '+(r.cls||'')+'"'+(r.tip?' data-tip="'+esc(r.tip)+'"':'')+'><span class="fi" style="width:'+Math.max(0,Math.min(100,r.v/max*100))+'%;'+(r.color?'background:'+r.color:'')+'"></span>'+
+  el.innerHTML = rows.map(r=>'<div class="nm '+(r.cls||'')+(r.on?' on':'')+'" title="'+esc(r.title||'')+'"'+(r.attr||'')+'>'+r.nm+'</div>'+
+    '<div class="tr '+(r.cls||'')+(r.on?' on':'')+'"'+(r.attr||'')+(r.tip?' data-tip="'+esc(r.tip)+'"':'')+'><span class="fi" style="width:'+Math.max(0,Math.min(100,r.v/max*100))+'%;'+(r.color?'background:'+r.color:'')+'"></span>'+
       (r.ref!=null?'<i class="ref" style="left:'+Math.min(100,r.ref/max*100)+'%"></i>':'')+'</div>'+
-    '<div class="v">'+r.txt+(r.sub?'<small>'+r.sub+'</small>':'')+'</div>').join('') || '<p class="note">Sin datos para esta selección.</p>';
+    '<div class="v'+(r.on?' on':'')+'"'+(r.attr||'')+'>'+r.txt+(r.sub?'<small>'+r.sub+'</small>':'')+'</div>').join('') || '<p class="note">Sin datos para esta selección.</p>';
 }
 // servicios esperados de la selección (mismo criterio de la tarjeta «Servicios con envío vigente»)
 function dvEsperados(L){
@@ -2123,7 +2123,7 @@ function diversidad(){
   else if (conDv < D.sa.length){ av.hidden = false; av.textContent = (D.sa.length-conDv)+' de '+D.sa.length+' servicios alimentarios todavía no tienen la diversidad calculada; se completan solos en unos minutos.'; }
   else av.hidden = true;
   const A = DVM.agregar(L.map(s=>dvDe(s))), N = DVM.agregar(D.sa.map(s=>dvDe(s))), hf = dvHayFiltro();
-  dvKpis(A, N, L, hf); dvDist(A); dvPres(A, N, hf); dvVar(A, N, hf); dvTabla(N); dvEdades(L, hf); dvDetalle(); dvMetodo();
+  dvKpis(A, N, L, hf); dvDist(A); dvLista(); dvPres(A, N, hf); dvVar(A, N, hf); dvTabla(N); dvEdades(L, hf); dvDetalle(); dvMetodo();
 }
 function dvKpis(A, N, L, hf){
   const edTxt = dvEd==='' ? '' : ' · '+DVM.EDADES[+dvEd];
@@ -2146,11 +2146,45 @@ function dvDist(A){
   const el = $('#dvDist');
   if (!A){ el.className=''; el.innerHTML = '<p class="note">Sin datos para esta selección.</p>'; $('#dvDistN').textContent=''; return; }
   const tot = sum(A.dist), lo = Math.min(4, A.min);
-  const rows = []; for (let p=7; p>=lo; p--) rows.push({nm: p+(p===1?' grupo':' grupos'), v: tot? A.dist[p]/tot : 0, txt: nf1.format(tot? A.dist[p]/tot*100 : 0)+' %', sub: nf0.format(A.dist[p])+' menús',
-    color: p>=5 ? 'var(--azul)' : 'var(--muted)'});
+  const rows = []; for (let p=7; p>=lo; p--) rows.push({nm: '<button type="button" class="dv-bt" data-dvp="'+p+'" aria-pressed="'+(dvPun===p)+'">'+p+(p===1?' grupo':' grupos')+'</button>',
+    v: tot? A.dist[p]/tot : 0, txt: nf1.format(tot? A.dist[p]/tot*100 : 0)+' %', sub: nf0.format(A.dist[p])+' menús', attr: ' data-dvp="'+p+'"', on: dvPun===p,
+    title: 'Ver en qué UT/OCT, servicios y días están los menús con '+p+' grupos', color: p>=5 ? 'var(--azul)' : 'var(--muted)'});
   dvBarras(el, rows, Math.max(...rows.map(r=>r.v), 1e-9));
-  $('#dvDistN').textContent = nf0.format(tot)+' menús diarios (servicio, día y grupo de edad). En azul, los de 5 o más grupos.';
+  $('#dvDistN').textContent = nf0.format(tot)+' menús diarios (servicio, día y grupo de edad). En azul, los de 5 o más grupos. Toque una barra para ver en qué UT/OCT, servicios y días están.';
 }
+// menús diarios con el puntaje tocado en «Menús diarios según su puntaje»: por UT/OCT (bloques desplegables, como las alertas),
+// servicio y día; al tocar un día se abre la ficha del servicio con ese día
+const DV_EDC = ['6 a 8 m', '9 a 11 m', '12 a 23 m', '24 a 36 m'];
+function dvLista(){
+  const box = $('#dvLista'); if (!box) return;
+  if (dvPun==null){ box.hidden = true; box.innerHTML = ''; return; }
+  const ed = dvEdad(), porUT = {}; let n = 0, nS = 0;
+  sel().forEach(s=>{ if (!s.dv) return; const F = DVM.fechas(s.dv), dias = [];
+    [0,1,2,3].forEach(g=>{ if (!s.u[g] || (ed!=null && g!==ed)) return; const c = DVM.codigos(s.dv, g);
+      for (let i=0; i+7<=c.length; i+=7){ const x = c.substr(i,7); if (x[0]==='-' || DVM.puntaje(x, dvT)!==dvPun) continue;
+        dias.push({f:F[i/7], g, sin:[0,1,2,3,4,5,6].filter(j=>!(+x[j]>dvT))}); } });
+    if (!dias.length) return;
+    dias.sort((a,b)=>a.f<b.f?-1:a.f>b.f?1:a.g-b.g); n += dias.length; nS++;
+    (porUT[s.ut] || (porUT[s.ut] = [])).push({s, dias}); });
+  const uts = Object.keys(porUT).sort((a,b)=>a.localeCompare(b,'es')), una = uts.length===1;
+  const largo = n > 200;   // con muchos menús, cada día va como una etiqueta corta (los grupos que faltan, al pasar el cursor)
+  const sinTxt = d => d.sin.length ? 'sin '+d.sin.map(j=>DVM.CORTO[j].charAt(0).toLowerCase()+DVM.CORTO[j].slice(1)).join(', ') : 'con los 7 grupos';
+  const diaA = (s, d) => '<a href="#dvDet" class="dvdia" data-dvsa="'+s.cui+'" data-dvf="'+d.f+'" data-dvg="'+d.g+'" title="'+esc(dvDiaTxt(d.f)+' · '+DVM.EDADES[d.g]+': '+sinTxt(d))+'">'+dvDiaTxt(d.f)+' · '+DV_EDC[d.g]+'</a>';
+  const bloque = u => { const L = porUT[u].sort((a,b)=>b.dias.length-a.dias.length || a.s.sa.localeCompare(b.s.sa,'es')), m = L.reduce((a,x)=>a+x.dias.length,0);
+    return '<details class="utal" data-dvut="'+esc(u)+'"'+(una?' open':'')+'><summary><span class="utn">'+esc(u)+'</span><span class="utc">'+nf0.format(m)+(m===1?' menú':' menús')+' · '+L.length+(L.length===1?' servicio':' servicios')+'</span></summary>'+
+      (una ? dvListaUT(u) : '')+'</details>'; };
+  window.__dvListaUT = u => '<ul class="dv-ls">'+porUT[u].map(({s, dias})=>'<li><b>'+esc(s.sa)+'</b> <span class="dv-n">CG '+esc(s.cg)+' · '+dias.length+(dias.length===1?' menú':' menús')+'</span>'+
+    (largo ? '<span class="dv-chips">'+dias.map(d=>diaA(s, d)).join('')+'</span>'
+           : '<ul>'+dias.map(d=>'<li>'+diaA(s, d)+' <span class="dv-n">'+esc(sinTxt(d))+'</span></li>').join('')+'</ul>')+'</li>').join('')+'</ul>';
+  box.hidden = false;
+  box.innerHTML = '<div class="utals dv-lst"><div class="utals-h"><h4>Menús diarios con '+dvPun+(dvPun===1?' grupo':' grupos')+' · '+nf0.format(n)+'</h4><span class="utals-b">'+
+      (uts.length>1 ? '<button type="button" data-utals="1">Abrir todas</button><button type="button" data-utals="0">Cerrar todas</button>' : '')+
+      '<button type="button" id="dvListaX" aria-label="Cerrar la lista">Cerrar ×</button></span></div>'+
+    '<p class="dv-n" style="margin:0 0 6px">'+(n ? nf0.format(n)+(n===1?' menú diario':' menús diarios')+' en '+nS+(nS===1?' servicio':' servicios')+' de '+uts.length+(uts.length===1?' UT/OCT':' UT/OCT')+
+      ' ('+DVM.UMBRAL_TXT[dvT]+(dvEd===''?'':', '+DVM.EDADES[+dvEd])+'). '+(una?'':'Toque una UT/OCT para ver sus servicios y días; ')+'toque un día para abrir el calendario del servicio.'
+      : 'No hay menús diarios con '+dvPun+' grupos en esta selección.')+'</p>'+uts.map(bloque).join('')+'</div>';
+}
+function dvListaUT(u){ return window.__dvListaUT ? window.__dvListaUT(u) : ''; }
 function dvPres(A, N, hf){
   const el = $('#dvPres');
   if (!A){ el.className=''; el.innerHTML = '<p class="note">Sin datos para esta selección.</p>'; $('#dvPresN').textContent=''; $('#dvPresR').hidden = true; return; }
@@ -2331,12 +2365,21 @@ function dvMetodo(){
     '<div class="utals dv-met"><div class="utals-h"><h4>'+temas.length+' temas</h4><span class="utals-b"><button type="button" data-utals="1">Abrir todos</button><button type="button" data-utals="0">Cerrar todos</button></span></div>'+temas.join('')+'</div>';
 }
 // eventos de la pestaña
+$('#dvDist').addEventListener('click', e=>{ const b = e.target.closest('[data-dvp]'); if (!b) return; const p = +b.dataset.dvp; dvPun = dvPun===p ? null : p;
+  const A = DVM.agregar(sel().map(s=>dvDe(s))); dvDist(A); dvLista(); if (dvPun!=null){ const l = $('#dvLista'); if (l && !l.hidden) l.scrollIntoView({behavior:'smooth', block:'nearest'}); } });
+on('toggle', e=>{ const d = e.target; if (!d.matches || !d.matches('#dvLista details.utal') || !d.open || d.dataset.ok) return; d.dataset.ok = 1; d.insertAdjacentHTML('beforeend', dvListaUT(d.dataset.dvut)); }, {capture: true});
+on('click', e=>{ if (e.target.closest('#dvListaX')){ dvPun = null; dvDist(DVM.agregar(sel().map(s=>dvDe(s)))); dvLista(); return; }
+  const a = e.target.closest('a.dvdia'); if (!a) return; e.preventDefault();
+  const s = byCui[a.dataset.dvsa]; if (!s) return;
+  dvSA = s.cui; dvDia = {f: a.dataset.dvf, g: +a.dataset.dvg};
+  if (UT!==s.ut) fijarFiltro(s.ut, CG && nCG(s.cg)===CG ? CG : '', SAF===s.cui ? SAF : ''); else { dvTabla(DVM.agregar(D.sa.map(x=>dvDe(x)))); dvDetalle(); }
+  const b = $('#dvDet'); if (b && !b.hidden) b.scrollIntoView({behavior:'smooth', block:'start'}); });
 $('#dvT').addEventListener('click', e=>{ const b = e.target.closest('[data-t]'); if (!b) return; dvT = +b.dataset.t; try{ localStorage.setItem('envios_dvT', String(dvT)); }catch(_){} diversidad(); });
 $('#dvEd').addEventListener('change', e=>{ dvEd = e.target.value; dvDia = null; try{ localStorage.setItem('envios_dvEd', dvEd); }catch(_){} diversidad(); });
 const dvOrdenar = th => { const k = th.dataset.dvk; if (dvOrdK===k) dvOrdD = -dvOrdD; else { dvOrdK = k; dvOrdD = k==='ut' ? 1 : -1; } dvTabla(DVM.agregar(D.sa.map(s=>dvDe(s)))); };
 on('click', e=>{ const th = e.target.closest('#vDiv th[data-dvk]'); if (th) dvOrdenar(th); });
 on('keydown', e=>{ if (e.key!=='Enter' && e.key!==' ') return; const th = e.target.closest && e.target.closest('#vDiv th[data-dvk]'); if (th){ e.preventDefault(); dvOrdenar(th); } });
-on('click', e=>{ const a = e.target.closest('a[data-dvsa]'); if (!a) return; e.preventDefault(); dvSA = a.dataset.dvsa; dvDia = null;
+on('click', e=>{ const a = e.target.closest('a.dvsa[data-dvsa]'); if (!a) return; e.preventDefault(); dvSA = a.dataset.dvsa; dvDia = null;
   dvTabla(DVM.agregar(D.sa.map(s=>dvDe(s)))); dvDetalle(); const b = $('#dvDet'); if (!b.hidden) b.scrollIntoView({behavior:'smooth', block:'start'}); });
 on('click', e=>{ const b = e.target.closest('#dvDet button[data-dvf]'); if (!b) return; const s = byCui[dvSA]; if (!s) return;
   dvDia = (dvDia && dvDia.f===b.dataset.dvf && dvDia.g===+b.dataset.dvg) ? null : {f:b.dataset.dvf, g:+b.dataset.dvg};
@@ -2348,9 +2391,9 @@ const E0 = arguments[2];
 if (E0){ aVar = !!E0.aVar; aBase = E0.aBase==='pd' ? 'pd' : 't'; aCmp = !!E0.aCmp; if (E0.xSortK){ xSortK = E0.xSortK; xSortD = E0.xSortD||-1; } if (E0.XS) XD.forEach(d=>(E0.XS[d]||[]).forEach(k=>XS[d].add(k))); if (E0.xMet==='kg'){ xMet='kg'; $('#xMetK').setAttribute('aria-pressed','true'); $('#xMetS').setAttribute('aria-pressed','false'); } if (E0.xQ){ xQ=E0.xQ; $('#xQ').value=xQ; } if (E0.SA) SA=E0.SA; if (E0.SEC!==undefined) SEC = SECT[E0.SEC] ? E0.SEC : ''; if (E0.UT && (E0.UT==='TODAS' || uts.includes(E0.UT))){ UT=E0.UT; $('#fUT').value=UT; } CG=E0.CG||''; SAF=E0.SAF||''; llenarFiltros(); if (E0.SEM!=null) SEM=E0.SEM; openCui=E0.openCui; sortK=E0.sortK; sortD=E0.sortD; macSel=E0.macSel; macVista=E0.macVista; $('#q').value=E0.q||''; DIA=E0.DIA; DIAkey=E0.DIAkey; FOCO=E0.FOCO;
   if (E0.metric==='kg'){ metric='kg'; $('#mK').setAttribute('aria-pressed','true'); $('#mS').setAttribute('aria-pressed','false'); }
   if (E0.gMet==='kg') gMetSet('kg'); }
-if (E0 && E0.dv){ const v = E0.dv; dvT = v.t; dvEd = v.ed; dvOrdK = v.ok; dvOrdD = v.od; dvSA = v.sa; dvDia = v.dia; }
+if (E0 && E0.dv){ const v = E0.dv; dvT = v.t; dvEd = v.ed; dvOrdK = v.ok; dvOrdD = v.od; dvSA = v.sa; dvDia = v.dia; dvPun = v.pun==null ? null : v.pun; }
 render();
 { const HV = {'#menu-semanal':'menu', '#envios':'env', '#diversidad':'div', '#alimentos':'ali', '#proveedores':'prov'}; if (HV[location.hash]) tab(HV[location.hash]); }
-return { estado: () => ({dv: {t:dvT, ed:dvEd, ok:dvOrdK, od:dvOrdD, sa:dvSA, dia:dvDia}, XS: Object.fromEntries(XD.map(d=>[d,[...XS[d]]])), xMet, xQ, xSortK, xSortD, aVar, aBase, aCmp, SA, SEC, UT, CG, SAF, SEM, openCui, sortK, sortD, metric, gMet, macSel, macVista, q:$('#q').value, DIA, DIAkey, FOCO}) };
+return { estado: () => ({dv: {t:dvT, ed:dvEd, ok:dvOrdK, od:dvOrdD, sa:dvSA, dia:dvDia, pun:dvPun}, XS: Object.fromEntries(XD.map(d=>[d,[...XS[d]]])), xMet, xQ, xSortK, xSortD, aVar, aBase, aCmp, SA, SEC, UT, CG, SAF, SEM, openCui, sortK, sortD, metric, gMet, macSel, macVista, q:$('#q').value, DIA, DIAkey, FOCO}) };
 }
 

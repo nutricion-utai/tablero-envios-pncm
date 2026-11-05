@@ -131,6 +131,22 @@ table.dvt td .sub2{display:block;font-size:11.5px;color:var(--muted);font-weight
 .dv-met .dv-mc ul.dv-gl{display:block;columns:2 300px;column-gap:22px;padding:0;margin:4px 0 0;list-style:none;max-width:none}
 .dv-met .dv-mc ul.dv-gl li{break-inside:avoid;margin:0 0 10px}
 .dv-pts{display:inline-flex;gap:3px;align-items:center}
+#dvDist [data-dvp]{cursor:pointer}
+.dv-bt{font:inherit;font-size:13px;padding:0;border:0;background:none;color:inherit;cursor:pointer;text-align:left;text-decoration:underline;text-decoration-color:var(--rule);text-underline-offset:3px}
+.dv-bt:hover,.dv-bt[aria-pressed="true"]{color:var(--azul);text-decoration-color:var(--azul)}
+.dv-bt[aria-pressed="true"]{font-weight:700}
+.dv-b .tr.on{outline:2px solid var(--azul);outline-offset:2px}
+.dv-b .v.on{color:var(--azul);font-weight:700}
+.dv-lst details.utal .utc{color:var(--ink2);font-weight:500}
+.dv-lst .dv-n{font-size:12.5px;color:var(--muted)}
+.dv-lst ul.dv-ls{list-style:none;margin:0 0 10px;padding:0 0 0 24px}
+.dv-lst ul.dv-ls>li{margin:0 0 10px;font-size:14px;line-height:1.45}
+.dv-lst ul.dv-ls ul{list-style:none;margin:2px 0 0;padding:0 0 0 12px;font-size:13.5px}
+.dv-lst ul.dv-ls ul li{margin:2px 0}
+.dv-lst a.dvdia{color:var(--azul);text-decoration:underline;text-decoration-color:var(--azul-soft);text-underline-offset:3px;white-space:nowrap}
+.dv-chips{display:flex;flex-wrap:wrap;gap:4px 6px;margin-top:4px}
+.dv-chips a.dvdia{font-size:12.5px;border:1px solid var(--rule);border-radius:999px;padding:1px 8px;text-decoration:none}
+@media (max-width:600px){.dv-lst ul.dv-ls{padding-left:10px}}
 .dv-pts i{width:9px;height:9px;border-radius:50%;background:var(--gc)}
 @media (max-width:600px){.dv-met .dv-mc{padding-left:12px}}
 .dv-cls{font-size:13px;color:var(--ink2);line-height:1.5}
@@ -705,6 +721,7 @@ h3.ut-t .uttag{margin-right:6px}
       <div class="panel"><h3>Menús diarios según su puntaje</h3><p class="note" id="dvDistN"></p><div id="dvDist"></div></div>
       <div class="panel"><h3>Presencia de cada grupo de alimentos</h3><p class="note" id="dvPresN"></p><div id="dvPres"></div><p class="dv-ref" id="dvPresR" hidden><i></i>valor nacional</p></div>
     </div>
+    <div id="dvLista" style="margin-top:16px" hidden></div>
   </section>
 
   <section id="dv-variedad">

@@ -76,8 +76,7 @@ td.f100 .hh{display:block;font-size:12px;color:var(--muted)}
 #dvKpi .kpi .labw .lab{white-space:normal}
 table.dvt th{white-space:normal;min-width:62px}
 table.dvt th.nro{min-width:0}
-#dvUT td:nth-child(2),#dvMes td:first-child{white-space:nowrap}
-#dvSA td:nth-child(2){min-width:210px}
+#dvUT td:nth-child(2){min-width:200px}
 a.dvsa{color:inherit;text-decoration:underline;text-decoration-color:var(--rule);text-underline-offset:3px}
 a.dvsa:hover{color:var(--azul);text-decoration-color:var(--azul)}
 .dv-ctl{display:flex;flex-wrap:wrap;gap:10px 22px;align-items:flex-end;margin:0 0 6px}
@@ -712,29 +711,16 @@ h3.ut-t .uttag{margin-right:6px}
   </section>
 
   <section id="dv-uts">
-    <h2>Comparativa por unidad territorial</h2>
+    <h2><span id="dvUtH">Comparativa por unidad territorial</span></h2>
     <p class="lede" id="dvUtL"></p>
     <div class="panel scroll"><table class="cmp dvt" id="dvUT"></table></div>
+    <div class="drawer" id="dvDet" hidden></div>
   </section>
 
   <section id="dv-edades">
     <h2>Por grupo de edad</h2>
     <p class="lede" id="dvEdL"></p>
     <div class="panel scroll"><table class="cmp dvt" id="dvEdT"></table></div>
-  </section>
-
-  <section id="dv-meses">
-    <h2>Entre meses</h2>
-    <p class="lede" id="dvMesL"></p>
-    <div class="dv-ctl"><div class="seg" role="group" aria-label="Medida" id="dvMesM"><button type="button" data-m="p" aria-pressed="true">Puntaje promedio</button><button type="button" data-m="v" aria-pressed="false">Alimentos distintos por semana</button></div></div>
-    <div class="panel scroll"><table class="cmp dvt" id="dvMes"></table></div>
-  </section>
-
-  <section id="dv-servicios">
-    <h2>Por servicio alimentario</h2>
-    <p class="lede" id="dvSaL"></p>
-    <div class="panel"><div class="scroll"><table class="cmp dvt" id="dvSA"></table></div><button type="button" class="xs-mas" id="dvMas" hidden></button></div>
-    <div class="drawer" id="dvDet" hidden></div>
   </section>
 
   <section id="dv-metodo">

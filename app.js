@@ -2080,7 +2080,7 @@ on('click', e=>{ const b = e.target.closest('.pngbtn'); if (b){ e.preventDefault
 // bloque está en Motor.gs). Promedios: en la UT/OCT y en el total nacional cada servicio pesa igual; dentro de un servicio, cada
 // grupo de edad pesa según sus niñas y niños. En lo que se comparte con las UT/OCT van cifras, sin calificativos entre unidades.
 const DVM = window.Diversidad;
-let dvT = 1, dvEd = '', dvOrdK = 'prom', dvOrdD = -1, dvSaK = 'prom', dvSaD = -1, dvMesM = 'p', dvSA = null, dvDia = null, dvMasN = 60;
+let dvT = 1, dvEd = '', dvOrdK = 'prom', dvOrdD = -1, dvSA = null, dvDia = null;
 try { const t = localStorage.getItem('envios_dvT'); if (t!==null && /^[012]$/.test(t)) dvT = +t; const e = localStorage.getItem('envios_dvEd'); if (e!==null && /^[0-3]?$/.test(e)) dvEd = e; } catch(_) {}
 Object.assign(ICO_TARJ, {'puntaje promedio':'pct', 'rango diario':'dia', 'menús con 5 o más grupos':'meta', 'alimentos distintos por semana':'kcal', 'servicios evaluados':'sa'});
 const dvEdad = () => dvEd==='' ? null : +dvEd;
@@ -2104,19 +2104,6 @@ function dvBarras(el, rows, max){
       (r.ref!=null?'<i class="ref" style="left:'+Math.min(100,r.ref/max*100)+'%"></i>':'')+'</div>'+
     '<div class="v">'+r.txt+(r.sub?'<small>'+r.sub+'</small>':'')+'</div>').join('') || '<p class="note">Sin datos para esta selección.</p>';
 }
-// metas de otros meses (para comparar): se leen una vez
-const DVMETA = window.__DVMETA || (window.__DVMETA = {});
-function dvMeta(p){   // los datos de otro mes se vuelven a leer si tienen más de 10 minutos
-  if (p===D.periodo) return null;
-  const o = DVMETA[p], viejo = o && o.t && Date.now()-o.t > 600000;
-  if (o && o.t && !viejo) return o.m;
-  if ((!o || viejo) && typeof window.__metaMes==='function'){
-    DVMETA[p] = {cargando: 1, m: o && o.m};
-    window.__metaMes(p).then(m=>{ DVMETA[p] = {t: Date.now(), m: m || {}}; if (!$('#vDiv').hidden) dvMeses(); })
-      .catch(()=>{ DVMETA[p] = {t: Date.now(), m: {}}; });
-  }
-  return DVMETA[p].m || undefined;   // undefined: cargando
-}
 // servicios esperados de la selección (mismo criterio de la tarjeta «Servicios con envío vigente»)
 function dvEsperados(L){
   const nFuera = L.filter(s=>!s.padron).length, sPad = SAF ? ((byCui[SAF]||{}).cuiPad||SAF) : null;
@@ -2136,7 +2123,7 @@ function diversidad(){
   else if (conDv < D.sa.length){ av.hidden = false; av.textContent = (D.sa.length-conDv)+' de '+D.sa.length+' servicios alimentarios todavía no tienen la diversidad calculada; se completan solos en unos minutos.'; }
   else av.hidden = true;
   const A = DVM.agregar(L.map(s=>dvDe(s))), N = DVM.agregar(D.sa.map(s=>dvDe(s))), hf = dvHayFiltro();
-  dvKpis(A, N, L, hf); dvDist(A); dvPres(A, N, hf); dvVar(A, N, hf); dvUTs(N); dvEdades(L, hf); dvMeses(); dvServicios(L, N); dvDetalle(); dvMetodo();
+  dvKpis(A, N, L, hf); dvDist(A); dvPres(A, N, hf); dvVar(A, N, hf); dvTabla(N); dvEdades(L, hf); dvDetalle(); dvMetodo();
 }
 function dvKpis(A, N, L, hf){
   const edTxt = dvEd==='' ? '' : ' · '+DVM.EDADES[+dvEd];
@@ -2183,27 +2170,52 @@ function dvVar(A, N, hf){
       (col?'<td class="n">'+dvV(N.vprom)+'</td><td class="n dif">'+dvDif(A.vprom, N.vprom, 1)+'</td>':'')+'</tr></tbody>';
   $('#dvVarN').textContent = 'Promedio por semana de los servicios (cada uno pesa igual); '+nf0.format(A.nv)+' servicios con semanas de 4 días o más.';
 }
-// comparativa por UT/OCT: todas las de la selección de sectorista, ordenadas; arriba, el valor nacional
-const DV_UT_COLS = [['ut','UT/OCT'],['n','Servicios',1],['prom','Puntaje promedio',1],['min','Mínimo',1],['max','Máximo',1],['dif','Diferencia con el nacional',1],['p5','Menús con 5 o más grupos',1],['vprom','Alimentos distintos por semana',1]];
-function dvUTs(N){
-  const t = $('#dvUT'), por = {};
-  D.sa.forEach(s=>{ (por[s.ut] || (por[s.ut] = [])).push(dvDe(s)); });
-  const esp = {}; filasAvance().rows.forEach(r=>{ esp[r.u] = r.e; });
-  let rows = Object.keys(por).filter(enSec).map(u=>Object.assign({ut:u, e:esp[u]||por[u].length}, DVM.agregar(por[u]) || {n:0}));
+// comparativa: sin UT/OCT elegida, una fila por UT/OCT (las del sectorista, si se eligió uno); con una UT/OCT elegida, una fila
+// por servicio alimentario de la selección (UT/OCT, comité o servicio). Arriba, como referencia, el valor nacional (y el de la UT/OCT).
+const dvCols = porSA => [['ut', porSA?'Servicio alimentario':'UT/OCT'], ['n', porSA?'Niñas y niños':'Servicios', 1], ['prom','Puntaje promedio',1], ['min','Mínimo',1], ['max','Máximo',1],
+  ['dif','Diferencia con el nacional',1], ['p5','Menús con 5 o más grupos',1], ['vprom','Alimentos distintos por semana',1]];
+function dvTabla(N){
+  const t = $('#dvUT'), porSA = UT!=='TODAS';
+  const h = $('#dvUtH'); if (h) h.textContent = porSA ? 'Comparativa por servicio alimentario' : 'Comparativa por unidad territorial';
+  let rows;
+  if (porSA){
+    rows = sel().map(s=>Object.assign({ut:s.sa, s, n:dvEd===''?s.ninos:(s.u[+dvEd]||0)}, dvDe(s) || {})).filter(r=>r.prom!=null);
+  } else {
+    const por = {};
+    D.sa.forEach(s=>{ (por[s.ut] || (por[s.ut] = [])).push(dvDe(s)); });
+    const esp = {}; filasAvance().rows.forEach(r=>{ esp[r.u] = r.e; });
+    rows = Object.keys(por).filter(enSec).map(u=>Object.assign({ut:u, e:esp[u]||por[u].length}, DVM.agregar(por[u]) || {n:0}));
+  }
   const val = {ut:r=>r.ut, n:r=>r.n, prom:r=>r.prom, min:r=>r.min, max:r=>r.max, dif:r=>r.prom, p5:r=>r.p5, vprom:r=>r.vprom}[dvOrdK] || (r=>r.prom);
   rows.sort((a,b)=>{ const x=val(a), y=val(b);
     if (x==null || y==null) return x==null && y==null ? a.ut.localeCompare(b.ut,'es') : x==null ? 1 : -1;
     const c = dvOrdK==='ut' ? x.localeCompare(y,'es') : (x>y?1:x<y?-1:0);
     return c ? c*dvOrdD : ((b.prom||0)-(a.prom||0) || a.ut.localeCompare(b.ut,'es')); });
-  const ordTxt = {ut:'UT/OCT', n:'servicios', prom:'puntaje promedio', min:'mínimo', max:'máximo', dif:'diferencia con el nacional', p5:'menús con 5 o más grupos', vprom:'alimentos distintos por semana'}[dvOrdK];
-  $('#dvUtL').textContent = 'Cada UT/OCT con el promedio de sus servicios'+(dvEd===''?'':' ('+DVM.EDADES[+dvEd]+')')+', ordenadas por '+ordTxt+(dvOrdD<0?' de mayor a menor':' de menor a mayor')+
-    '. La primera fila es el valor nacional; la línea punteada de cada barra también lo marca. Toque un encabezado para ordenar y el nombre de una UT/OCT para filtrarla.'+(SEC?' Se muestran las UT/OCT de '+secNom()+'.':'');
-  const fila = (r, i) => '<tr'+(UT===r.ut?' class="act"':'')+'><td class="n nro">'+i+'</td><td><a href="#" class="salink" data-ut="'+esc(UT===r.ut?'TODAS':r.ut)+'" title="'+(UT===r.ut?'Quitar el filtro de UT':'Filtrar por '+esc(r.ut))+'">'+esc(r.ut)+'</a></td>'+
-    '<td class="n">'+r.n+'<span class="sub2">de '+r.e+' esperados</span></td><td>'+(r.n?dvBar(r.prom, N?N.prom:null, 7):'—')+'</td><td class="n">'+(r.n?r.min:'—')+'</td><td class="n">'+(r.n?r.max:'—')+'</td>'+
-    '<td class="n dif">'+(r.n?dvDif(r.prom, N&&N.prom):'—')+'</td><td class="n">'+(r.n?dvP(r.p5):'—')+'</td><td class="n">'+(r.n?dvV(r.vprom):'—')+'</td></tr>';
-  t.innerHTML = '<thead><tr><th class="n nro">N°</th>'+DV_UT_COLS.map(c=>'<th class="sort'+(c[2]?' n':'')+'" tabindex="0" data-dvk="'+c[0]+'" aria-sort="'+(dvOrdK===c[0]?(dvOrdD>0?'ascending':'descending'):'none')+'" title="Ordenar por '+c[1].toLowerCase()+'">'+c[1]+'</th>').join('')+'</tr></thead><tbody>'+
-    (N ? '<tr class="nac"><td></td><td>Nacional</td><td class="n">'+N.n+'<span class="sub2">de '+nf0.format(D.padTotal+D.sa.filter(s=>!s.padron).length)+' esperados</span></td><td>'+dvBar(N.prom, null, 7)+'</td><td class="n">'+N.min+'</td><td class="n">'+N.max+'</td><td class="n dif">—</td><td class="n">'+dvP(N.p5)+'</td><td class="n">'+dvV(N.vprom)+'</td></tr>' : '')+
-    rows.map((r,i)=>fila(r,i+1)).join('')+'</tbody>';
+  const ordTxt = {ut:porSA?'nombre del servicio':'UT/OCT', n:porSA?'niñas y niños':'servicios', prom:'puntaje promedio', min:'mínimo', max:'máximo', dif:'diferencia con el nacional', p5:'menús con 5 o más grupos', vprom:'alimentos distintos por semana'}[dvOrdK];
+  const edTxt = dvEd==='' ? '' : ' ('+DVM.EDADES[+dvEd]+')';
+  $('#dvUtL').textContent = porSA
+    ? 'Cada servicio alimentario con su puntaje promedio'+edTxt+', el más bajo y el más alto del mes, ordenados por '+ordTxt+(dvOrdD<0?' de mayor a menor':' de menor a mayor')+
+      '. Arriba van el valor nacional y el de '+UT+'; la línea punteada de cada barra marca el nacional. Toque el nombre de un servicio para ver su calendario de grupos por día y edad.'
+    : 'Cada UT/OCT con el promedio de sus servicios'+edTxt+', ordenadas por '+ordTxt+(dvOrdD<0?' de mayor a menor':' de menor a mayor')+
+      '. La primera fila es el valor nacional; la línea punteada de cada barra también lo marca. Toque un encabezado para ordenar y el nombre de una UT/OCT para ver sus servicios alimentarios.'+(SEC?' Se muestran las UT/OCT de '+secNom()+'.':'');
+  const celdas = (r, ref) => '<td>'+dvBar(r.prom, ref, 7)+'</td><td class="n">'+r.min+'</td><td class="n">'+r.max+'</td>'+
+    '<td class="n dif">'+(ref==null?'—':dvDif(r.prom, ref))+'</td><td class="n">'+dvP(r.p5)+'</td><td class="n">'+dvV(r.vprom)+'</td>';
+  const vacias = '<td>—</td><td class="n">—</td><td class="n">—</td><td class="n dif">—</td><td class="n">—</td><td class="n">—</td>';
+  const nacFila = N ? '<tr class="nac"><td></td><td>Nacional</td><td class="n">'+(porSA ? '' : N.n+'<span class="sub2">de '+nf0.format(D.padTotal+D.sa.filter(s=>!s.padron).length)+' esperados</span>')+'</td>'+
+    '<td>'+dvBar(N.prom, null, 7)+'</td><td class="n">'+N.min+'</td><td class="n">'+N.max+'</td><td class="n dif">—</td><td class="n">'+dvP(N.p5)+'</td><td class="n">'+dvV(N.vprom)+'</td></tr>' : '';
+  let utFila = '';
+  if (porSA){
+    const U = DVM.agregar(D.sa.filter(s=>s.ut===UT).map(s=>dvDe(s)));
+    utFila = '<tr class="nac"><td></td><td><a href="#" class="salink" data-ut="TODAS" title="Quitar el filtro de UT/OCT y volver a la comparativa por UT/OCT">'+esc(UT)+'</a><span class="sub2">promedio de sus '+(U?U.n:0)+' servicios</span></td><td class="n"></td>'+
+      (U ? celdas(U, N?N.prom:null) : vacias)+'</tr>';
+  }
+  const fila = (r, i) => porSA
+    ? '<tr'+(dvSA===r.s.cui?' class="act"':'')+'><td class="n nro">'+i+'</td><td><a href="#dv-uts" class="dvsa" data-dvsa="'+r.s.cui+'">'+esc(r.s.sa)+'</a><span class="sub2">CG '+esc(r.s.cg)+'</span></td>'+
+      '<td class="n">'+nf0.format(r.n)+'</td>'+celdas(r, N?N.prom:null)+'</tr>'
+    : '<tr><td class="n nro">'+i+'</td><td><a href="#" class="salink" data-ut="'+esc(r.ut)+'" title="Ver los servicios de '+esc(r.ut)+'">'+esc(r.ut)+'</a></td>'+
+      '<td class="n">'+r.n+'<span class="sub2">de '+r.e+' esperados</span></td>'+(r.n ? celdas(r, N?N.prom:null) : vacias)+'</tr>';
+  t.innerHTML = '<thead><tr><th class="n nro">N°</th>'+dvCols(porSA).map(c=>'<th class="sort'+(c[2]?' n':'')+'" tabindex="0" data-dvk="'+c[0]+'" aria-sort="'+(dvOrdK===c[0]?(dvOrdD>0?'ascending':'descending'):'none')+'" title="Ordenar por '+c[1].toLowerCase()+'">'+c[1]+'</th>').join('')+'</tr></thead><tbody>'+
+    nacFila+utFila+(rows.length ? rows.map((r,i)=>fila(r,i+1)).join('') : '<tr><td></td><td colspan="8" style="color:var(--muted)">Sin servicios con datos de diversidad en esta selección.</td></tr>')+'</tbody>';
 }
 function dvEdades(L, hf){
   const t = $('#dvEdT');
@@ -2216,53 +2228,10 @@ function dvEdades(L, hf){
            '<td class="n">'+A.min+'</td><td class="n">'+A.max+'</td><td class="n">'+dvP(A.p5)+'</td><td class="n">'+dvV(A.vprom)+'</td>'
          : '<td class="n">0</td><td colspan="'+(hf?7:5)+'" style="color:var(--muted)">Sin niñas ni niños de esta edad en la selección</td>')+'</tr>').join('')+'</tbody>';
 }
-// entre meses: el mes elegido se calcula con sus datos; los demás, con el resumen publicado de cada mes (meta.dvr)
-function dvMeses(){
-  const t = $('#dvMes'); if (!t) return;
-  $('#dvMesM').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed', String(b.dataset.m===dvMesM)));
-  const meses = (window.__MESES||[D.periodo]).slice().sort();
-  const k = dvT*5 + (dvEd===''?0:+dvEd+1);
-  const celdas = {};   // {mes: {UT: [servicios, suma puntajes, suma %5, servicios con variedad, suma variedad]} | null (sin datos) | undefined (cargando)}
-  meses.forEach(p=>{
-    if (p===D.periodo){ const o = {}; D.sa.forEach(s=>{ const x = dvDe(s); if (!x) return; const c = o[s.ut] || (o[s.ut] = [0,0,0,0,0]); c[0]++; c[1]+=x.prom; c[2]+=x.p5; if (x.vprom!=null){ c[3]++; c[4]+=x.vprom; } }); celdas[p] = Object.keys(o).length ? o : null; return; }
-    const m = dvMeta(p);
-    if (m===undefined){ celdas[p] = undefined; return; }
-    const R = m && m.dvr && m.dvr.ut; if (!R){ celdas[p] = null; return; }
-    const o = {}; Object.keys(R).forEach(u=>{ const c = R[u][k]; if (c && c[0]) o[u] = c; }); celdas[p] = o;
-  });
-  const uts = [...new Set(meses.flatMap(p=>celdas[p]?Object.keys(celdas[p]):[]))].filter(enSec).sort((a,b)=>a.localeCompare(b,'es'));
-  const valor = c => !c ? null : dvMesM==='p' ? (c[0]?c[1]/c[0]:null) : (c[3]?c[4]/c[3]:null);
-  const fmt = v => v==null ? '—' : dvMesM==='p' ? dvF(v) : dvV(v);
-  const nacional = p => { const o = celdas[p]; if (!o) return null; const c = [0,0,0,0,0]; Object.keys(o).forEach(u=>o[u].forEach((x,i)=>{ c[i]+=x; })); return c; };
-  const celda = (p, c) => celdas[p]===undefined ? '<td class="mesv" style="color:var(--muted)">…</td>' : '<td class="mesv"'+(c?' title="'+c[0]+' servicios"':'')+'>'+fmt(valor(c))+(c?'<span class="sub2">'+c[0]+' serv.</span>':'')+'</td>';
-  $('#dvMesL').textContent = (dvMesM==='p'?'Puntaje promedio':'Alimentos distintos por semana')+' de cada mes, con los mismos gramos y grupo de edad elegidos arriba. Cada servicio pesa igual. '+
-    (CG||SAF ? 'Con un comité o servicio elegido, la comparación se muestra por UT/OCT. ' : '')+'Los meses sin cifras todavía no tienen la diversidad publicada.';
-  t.innerHTML = '<thead><tr><th>UT/OCT</th>'+meses.map(p=>'<th class="n">'+mesTxt(p).replace(/^./,c=>c.toUpperCase())+'</th>').join('')+'</tr></thead><tbody>'+
-    '<tr class="nac"><td>Nacional</td>'+meses.map(p=>celda(p, nacional(p))).join('')+'</tr>'+
-    uts.map(u=>'<tr'+(UT===u?' class="act"':'')+'><td><a href="#" class="salink" data-ut="'+esc(UT===u?'TODAS':u)+'">'+esc(u)+'</a></td>'+meses.map(p=>celda(p, celdas[p] && celdas[p][u])).join('')+'</tr>').join('')+'</tbody>';
-}
-// servicios de la selección
-const DV_SA_COLS = [['sa','Servicio alimentario'],['ut','UT/OCT'],['ninos','Niñas y niños',1],['prom','Puntaje promedio',1],['min','Mínimo',1],['max','Máximo',1],['p5','Menús con 5 o más grupos',1],['vprom','Alimentos distintos por semana',1]];
-function dvServicios(L, N){
-  const t = $('#dvSA'), cols = DV_SA_COLS.filter(c=>c[0]!=='ut' || UT==='TODAS');
-  const rows = L.map(s=>({s, x:dvDe(s)})).filter(r=>r.x);
-  const val = {sa:r=>r.s.sa, ut:r=>r.s.ut, ninos:r=>r.s.ninos, prom:r=>r.x.prom, min:r=>r.x.min, max:r=>r.x.max, p5:r=>r.x.p5, vprom:r=>r.x.vprom}[dvSaK] || (r=>r.x.prom);
-  rows.sort((a,b)=>{ const x=val(a), y=val(b);
-    if (x==null || y==null) return x==null && y==null ? 0 : x==null ? 1 : -1;
-    const c = (dvSaK==='sa'||dvSaK==='ut') ? x.localeCompare(y,'es') : (x>y?1:x<y?-1:0);
-    return c ? c*dvSaD : (b.x.prom-a.x.prom || a.s.sa.localeCompare(b.s.sa,'es')); });
-  $('#dvSaL').textContent = rows.length ? 'Servicios alimentarios de la selección con su puntaje promedio, el más bajo y el más alto del mes. La línea punteada marca el valor nacional. Toque el nombre de un servicio para ver su calendario de grupos por día y edad.' : '';
-  const ver = rows.slice(0, dvMasN);
-  t.innerHTML = rows.length ? '<thead><tr><th class="n nro">N°</th>'+cols.map(c=>'<th class="sort'+(c[2]?' n':'')+'" tabindex="0" data-dvs="'+c[0]+'" aria-sort="'+(dvSaK===c[0]?(dvSaD>0?'ascending':'descending'):'none')+'" title="Ordenar por '+c[1].toLowerCase()+'">'+c[1]+'</th>').join('')+'</tr></thead><tbody>'+
-    ver.map((r,i)=>'<tr'+(dvSA===r.s.cui?' class="act"':'')+'><td class="n nro">'+(i+1)+'</td><td><a href="#dv-servicios" class="dvsa" data-dvsa="'+r.s.cui+'">'+esc(r.s.sa)+'</a><span class="sub2">CG '+esc(r.s.cg)+'</span></td>'+
-      (UT==='TODAS'?'<td>'+esc(r.s.ut)+'</td>':'')+'<td class="n">'+nf0.format(dvEd===''?r.s.ninos:(r.s.u[+dvEd]||0))+'</td><td>'+dvBar(r.x.prom, N?N.prom:null, 7)+'</td><td class="n">'+r.x.min+'</td><td class="n">'+r.x.max+'</td><td class="n">'+dvP(r.x.p5)+'</td><td class="n">'+dvV(r.x.vprom)+'</td></tr>').join('')+'</tbody>'
-    : '<tbody><tr><td>Sin servicios con datos de diversidad en esta selección.</td></tr></tbody>';
-  const b = $('#dvMas'); b.hidden = rows.length <= dvMasN; b.textContent = 'Ver '+Math.min(60, rows.length-dvMasN)+' más (de '+rows.length+')';
-}
 // ficha de un servicio: calendario de grupos por día y edad, variedad por semana y alimentos del día elegido
 function dvDetalle(){
   const box = $('#dvDet'), s = dvSA && byCui[dvSA];
-  if (!s || !s.dv || !sel().includes(s)){ box.hidden = true; box.innerHTML = ''; return; }
+  if (!s || !s.dv || UT==='TODAS' || !sel().includes(s)){ box.hidden = true; box.innerHTML = ''; return; }
   const F = DVM.fechas(s.dv), S = DVM.semanas(s.dv), x = dvDe(s);
   const eds = [0,1,2,3].filter(g=>s.u[g] && DVM.codigos(s.dv, g) && (dvEd==='' || +dvEd===g));
   const sems = []; F.forEach((f,i)=>{ const w = sems[sems.length-1]; if (w && w.s===S[i]) w.n++; else sems.push({s:S[i], n:1}); });
@@ -2288,7 +2257,7 @@ function dvDetalle(){
     '<div class="scroll"><table class="dv-cal"><thead><tr><th></th>'+sems.map(w=>'<th class="sm" colspan="'+w.n+'">Semana '+w.s+'</th>').join('')+'</tr><tr><th></th>'+F.map(f=>'<th>'+dvDiaTxt(f).replace(' ','<br>')+'</th>').join('')+'</tr></thead><tbody>'+
       eds.map(g=>'<tr><th class="ed">'+GRC[g]+'</th>'+F.map((f,i)=>celda(g,i)).join('')+'</tr>').join('')+'</tbody></table></div>'+
     vtab+'<div id="dvDiaBox"></div>';
-  $('#dvDetX').onclick = ()=>{ dvSA = null; dvDia = null; dvDetalle(); dvServicios(sel(), DVM.agregar(D.sa.map(s=>dvDe(s)))); };
+  $('#dvDetX').onclick = ()=>{ dvSA = null; dvDia = null; dvDetalle(); dvTabla(DVM.agregar(D.sa.map(s=>dvDe(s)))); };
   dvDiaDet(s);
 }
 function dvDiaDet(s){
@@ -2340,14 +2309,11 @@ function dvMetodo(){
 // eventos de la pestaña
 $('#dvT').addEventListener('click', e=>{ const b = e.target.closest('[data-t]'); if (!b) return; dvT = +b.dataset.t; try{ localStorage.setItem('envios_dvT', String(dvT)); }catch(_){} diversidad(); });
 $('#dvEd').addEventListener('change', e=>{ dvEd = e.target.value; dvDia = null; try{ localStorage.setItem('envios_dvEd', dvEd); }catch(_){} diversidad(); });
-$('#dvMesM').addEventListener('click', e=>{ const b = e.target.closest('[data-m]'); if (!b) return; dvMesM = b.dataset.m; dvMeses(); });
-$('#dvMas').addEventListener('click', ()=>{ dvMasN += 60; dvServicios(sel(), DVM.agregar(D.sa.map(s=>dvDe(s)))); });
-const dvOrdenar = th => { if (th.dataset.dvk){ const k = th.dataset.dvk; if (dvOrdK===k) dvOrdD = -dvOrdD; else { dvOrdK = k; dvOrdD = k==='ut' ? 1 : -1; } dvUTs(DVM.agregar(D.sa.map(s=>dvDe(s)))); }
-  else if (th.dataset.dvs){ const k = th.dataset.dvs; if (dvSaK===k) dvSaD = -dvSaD; else { dvSaK = k; dvSaD = (k==='sa'||k==='ut') ? 1 : -1; } dvServicios(sel(), DVM.agregar(D.sa.map(s=>dvDe(s)))); } };
-on('click', e=>{ const th = e.target.closest('#vDiv th[data-dvk], #vDiv th[data-dvs]'); if (th) dvOrdenar(th); });
-on('keydown', e=>{ if (e.key!=='Enter' && e.key!==' ') return; const th = e.target.closest && e.target.closest('#vDiv th[data-dvk], #vDiv th[data-dvs]'); if (th){ e.preventDefault(); dvOrdenar(th); } });
+const dvOrdenar = th => { const k = th.dataset.dvk; if (dvOrdK===k) dvOrdD = -dvOrdD; else { dvOrdK = k; dvOrdD = k==='ut' ? 1 : -1; } dvTabla(DVM.agregar(D.sa.map(s=>dvDe(s)))); };
+on('click', e=>{ const th = e.target.closest('#vDiv th[data-dvk]'); if (th) dvOrdenar(th); });
+on('keydown', e=>{ if (e.key!=='Enter' && e.key!==' ') return; const th = e.target.closest && e.target.closest('#vDiv th[data-dvk]'); if (th){ e.preventDefault(); dvOrdenar(th); } });
 on('click', e=>{ const a = e.target.closest('a[data-dvsa]'); if (!a) return; e.preventDefault(); dvSA = a.dataset.dvsa; dvDia = null;
-  dvServicios(sel(), DVM.agregar(D.sa.map(s=>dvDe(s)))); dvDetalle(); const b = $('#dvDet'); if (!b.hidden) b.scrollIntoView({behavior:'smooth', block:'start'}); });
+  dvTabla(DVM.agregar(D.sa.map(s=>dvDe(s)))); dvDetalle(); const b = $('#dvDet'); if (!b.hidden) b.scrollIntoView({behavior:'smooth', block:'start'}); });
 on('click', e=>{ const b = e.target.closest('#dvDet button[data-dvf]'); if (!b) return; const s = byCui[dvSA]; if (!s) return;
   dvDia = (dvDia && dvDia.f===b.dataset.dvf && dvDia.g===+b.dataset.dvg) ? null : {f:b.dataset.dvf, g:+b.dataset.dvg};
   document.querySelectorAll('#dvDet button[data-dvf]').forEach(x=>x.setAttribute('aria-pressed', String(!!dvDia && x.dataset.dvf===dvDia.f && +x.dataset.dvg===dvDia.g)));
@@ -2358,9 +2324,9 @@ const E0 = arguments[2];
 if (E0){ aVar = !!E0.aVar; aBase = E0.aBase==='pd' ? 'pd' : 't'; aCmp = !!E0.aCmp; if (E0.xSortK){ xSortK = E0.xSortK; xSortD = E0.xSortD||-1; } if (E0.XS) XD.forEach(d=>(E0.XS[d]||[]).forEach(k=>XS[d].add(k))); if (E0.xMet==='kg'){ xMet='kg'; $('#xMetK').setAttribute('aria-pressed','true'); $('#xMetS').setAttribute('aria-pressed','false'); } if (E0.xQ){ xQ=E0.xQ; $('#xQ').value=xQ; } if (E0.SA) SA=E0.SA; if (E0.SEC!==undefined) SEC = SECT[E0.SEC] ? E0.SEC : ''; if (E0.UT && (E0.UT==='TODAS' || uts.includes(E0.UT))){ UT=E0.UT; $('#fUT').value=UT; } CG=E0.CG||''; SAF=E0.SAF||''; llenarFiltros(); if (E0.SEM!=null) SEM=E0.SEM; openCui=E0.openCui; sortK=E0.sortK; sortD=E0.sortD; macSel=E0.macSel; macVista=E0.macVista; $('#q').value=E0.q||''; DIA=E0.DIA; DIAkey=E0.DIAkey; FOCO=E0.FOCO;
   if (E0.metric==='kg'){ metric='kg'; $('#mK').setAttribute('aria-pressed','true'); $('#mS').setAttribute('aria-pressed','false'); }
   if (E0.gMet==='kg') gMetSet('kg'); }
-if (E0 && E0.dv){ const v = E0.dv; dvT = v.t; dvEd = v.ed; dvOrdK = v.ok; dvOrdD = v.od; dvSaK = v.sk; dvSaD = v.sd; dvMesM = v.mm; dvSA = v.sa; dvDia = v.dia; dvMasN = v.mas || 60; }
+if (E0 && E0.dv){ const v = E0.dv; dvT = v.t; dvEd = v.ed; dvOrdK = v.ok; dvOrdD = v.od; dvSA = v.sa; dvDia = v.dia; }
 render();
 { const HV = {'#menu-semanal':'menu', '#envios':'env', '#diversidad':'div', '#alimentos':'ali', '#proveedores':'prov'}; if (HV[location.hash]) tab(HV[location.hash]); }
-return { estado: () => ({dv: {t:dvT, ed:dvEd, ok:dvOrdK, od:dvOrdD, sk:dvSaK, sd:dvSaD, mm:dvMesM, sa:dvSA, dia:dvDia, mas:dvMasN}, XS: Object.fromEntries(XD.map(d=>[d,[...XS[d]]])), xMet, xQ, xSortK, xSortD, aVar, aBase, aCmp, SA, SEC, UT, CG, SAF, SEM, openCui, sortK, sortD, metric, gMet, macSel, macVista, q:$('#q').value, DIA, DIAkey, FOCO}) };
+return { estado: () => ({dv: {t:dvT, ed:dvEd, ok:dvOrdK, od:dvOrdD, sa:dvSA, dia:dvDia}, XS: Object.fromEntries(XD.map(d=>[d,[...XS[d]]])), xMet, xQ, xSortK, xSortD, aVar, aBase, aCmp, SA, SEC, UT, CG, SAF, SEM, openCui, sortK, sortD, metric, gMet, macSel, macVista, q:$('#q').value, DIA, DIAkey, FOCO}) };
 }
 

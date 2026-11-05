@@ -702,7 +702,10 @@ h3.ut-t .uttag{margin-right:6px}
         <div id="cFood"></div>
       </div>
       <div class="panel">
-        <h3>Costo por grupo de alimentos</h3>
+        <div style="display:flex;flex-wrap:wrap;gap:8px 14px;justify-content:space-between;align-items:center">
+          <h3 id="hGrupo">Costo por grupo de alimentos</h3>
+          <div class="seg" role="group" aria-label="Medida"><button type="button" id="gS" aria-pressed="true">Costo (S/)</button><button type="button" id="gK" aria-pressed="false">Volumen (kg o L)</button></div>
+        </div>
         <p class="note" id="npNote"></p>
         <div id="cGrupo"></div>
       </div>

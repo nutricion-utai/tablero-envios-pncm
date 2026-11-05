@@ -538,6 +538,11 @@ function nino(){
 let metric = 's';
 $('#mS').onclick = ()=>{metric='s'; $('#mS').setAttribute('aria-pressed','true'); $('#mK').setAttribute('aria-pressed','false'); foods();};
 $('#mK').onclick = ()=>{metric='kg'; $('#mK').setAttribute('aria-pressed','true'); $('#mS').setAttribute('aria-pressed','false'); foods();};
+// medida del gráfico por grupo de alimentos (independiente de la de los 15 alimentos)
+let gMet = 's';
+const gMetSet = m => { gMet = m; $('#gS').setAttribute('aria-pressed', String(m==='s')); $('#gK').setAttribute('aria-pressed', String(m==='kg')); };
+$('#gS').onclick = ()=>{ gMetSet('s'); foods(); };
+$('#gK').onclick = ()=>{ gMetSet('kg'); foods(); };
 function foodAgg(){
   const set = new Set(sel().map(s=>s.cui)); const agg = {};
   D.food.forEach(([c,a,t,kg,s])=>{ if(!set.has(c)) return; const k=a; const o = agg[k]||(agg[k]={a,t,kg:0,s:0,n:new Set()}); o.kg+=kg; o.s+=s; o.n.add(c); });
@@ -551,12 +556,16 @@ function foods(){
     label: metric==='s'? S0(o.s) : nf0.format(o.kg),
     tip:'<b>'+esc(D.alimentos[o.a][0])+'</b><br>'+(o.t?'Perecible':'No perecible')+'<br>'+S0(o.s)+' · '+nf1.format(o.kg)+' kg o L<br>'+P1(tot?o[metric]/tot:0)+' del total · pedido por '+o.n.size+' servicios'})), {});
   // grupos
-  const g = {}; let np=0, p=0;
-  A.forEach(o=>{ const k=D.grupos[D.alimentos[o.a][1]]; g[k]=(g[k]||0)+o.s; if(o.t) p+=o.s; else np+=o.s; });
-  const T = np+p;
-  $('#npNote').textContent = 'Del costo total, '+P1(T?np/T:0)+' corresponde a no perecibles ('+S0(np)+') y '+P1(T?p/T:0)+' a perecibles ('+S0(p)+').';
-  const gr = Object.entries(g).sort((a,b)=>b[1]-a[1]);
-  hbars($('#cGrupo'), gr.map(([k,v])=>({name:k.charAt(0)+k.slice(1).toLowerCase(), value:v, label:P1(T?v/T:0), tip:'<b>'+esc(k)+'</b><br>'+S0(v)})), {});
+  const M = gMet, g = {}, tt = {np:{s:0,kg:0}, p:{s:0,kg:0}};
+  A.forEach(o=>{ const k=D.grupos[D.alimentos[o.a][1]]; const e = g[k]||(g[k]={s:0,kg:0,n:new Set()}); e.s+=o.s; e.kg+=o.kg; o.n.forEach(c=>e.n.add(c));
+    const t = o.t ? tt.p : tt.np; t.s+=o.s; t.kg+=o.kg; });
+  const np = tt.np[M], p = tt.p[M], T = np+p;
+  const fm = M==='s' ? S0 : v => nf0.format(v)+' kg o L', que = M==='s' ? 'costo' : 'volumen';
+  $('#hGrupo').textContent = (M==='s' ? 'Costo' : 'Volumen')+' por grupo de alimentos';
+  $('#npNote').textContent = 'Del '+que+' total, '+P1(T?np/T:0)+' corresponde a no perecibles ('+fm(np)+') y '+P1(T?p/T:0)+' a perecibles ('+fm(p)+').';
+  const gr = Object.entries(g).sort((a,b)=>b[1][M]-a[1][M]);
+  hbars($('#cGrupo'), gr.map(([k,v])=>({name:k.charAt(0)+k.slice(1).toLowerCase(), value:v[M], label:P1(T?v[M]/T:0),
+    tip:'<b>'+esc(k)+'</b><br>'+S0(v.s)+' · '+nf1.format(v.kg)+' kg o L<br>'+P1(T?v[M]/T:0)+' del '+que+' total · pedido por '+v.n.size+' servicios'})), {});
 }
 
 // -------- proveedores
@@ -2102,10 +2111,11 @@ on('click', e=>{ const b = e.target.closest('#dvDet button[data-dvf]'); if (!b) 
 function render(){ titulosUT(); kpis(); coberturaNut(); avance(); porDia(); ultimos(); calidad(); ejec(); nino(); foods(); alertasAporte(); resumenCob(); resumenMacro(); graficoMacro(); alertasMacro(); prov(); explorar(); detalle(); if(!$('#vMen').hidden) menuSemanal(true); diversidad(); }
 const E0 = arguments[2];
 if (E0){ if (E0.XS) XD.forEach(d=>(E0.XS[d]||[]).forEach(k=>XS[d].add(k))); if (E0.xMet==='kg'){ xMet='kg'; $('#xMetK').setAttribute('aria-pressed','true'); $('#xMetS').setAttribute('aria-pressed','false'); } if (E0.xQ){ xQ=E0.xQ; $('#xQ').value=xQ; } if (E0.SA) SA=E0.SA; if (E0.SEC!==undefined) SEC = SECT[E0.SEC] ? E0.SEC : ''; if (E0.UT && (E0.UT==='TODAS' || uts.includes(E0.UT))){ UT=E0.UT; $('#fUT').value=UT; } CG=E0.CG||''; SAF=E0.SAF||''; llenarFiltros(); if (E0.SEM!=null) SEM=E0.SEM; openCui=E0.openCui; sortK=E0.sortK; sortD=E0.sortD; macSel=E0.macSel; macVista=E0.macVista; $('#q').value=E0.q||''; DIA=E0.DIA; DIAkey=E0.DIAkey; FOCO=E0.FOCO;
-  if (E0.metric==='kg'){ metric='kg'; $('#mK').setAttribute('aria-pressed','true'); $('#mS').setAttribute('aria-pressed','false'); } }
+  if (E0.metric==='kg'){ metric='kg'; $('#mK').setAttribute('aria-pressed','true'); $('#mS').setAttribute('aria-pressed','false'); }
+  if (E0.gMet==='kg') gMetSet('kg'); }
 if (E0 && E0.dv){ const v = E0.dv; dvT = v.t; dvEd = v.ed; dvOrdK = v.ok; dvOrdD = v.od; dvSaK = v.sk; dvSaD = v.sd; dvMesM = v.mm; dvSA = v.sa; dvDia = v.dia; dvMasN = v.mas || 60; }
 render();
 { const HV = {'#menu-semanal':'menu', '#envios':'env', '#diversidad':'div', '#alimentos':'ali', '#proveedores':'prov'}; if (HV[location.hash]) tab(HV[location.hash]); }
-return { estado: () => ({dv: {t:dvT, ed:dvEd, ok:dvOrdK, od:dvOrdD, sk:dvSaK, sd:dvSaD, mm:dvMesM, sa:dvSA, dia:dvDia, mas:dvMasN}, XS: Object.fromEntries(XD.map(d=>[d,[...XS[d]]])), xMet, xQ, SA, SEC, UT, CG, SAF, SEM, openCui, sortK, sortD, metric, macSel, macVista, q:$('#q').value, DIA, DIAkey, FOCO}) };
+return { estado: () => ({dv: {t:dvT, ed:dvEd, ok:dvOrdK, od:dvOrdD, sk:dvSaK, sd:dvSaD, mm:dvMesM, sa:dvSA, dia:dvDia, mas:dvMasN}, XS: Object.fromEntries(XD.map(d=>[d,[...XS[d]]])), xMet, xQ, SA, SEC, UT, CG, SAF, SEM, openCui, sortK, sortD, metric, gMet, macSel, macVista, q:$('#q').value, DIA, DIAkey, FOCO}) };
 }
 

@@ -846,9 +846,9 @@ function explorar(){
   const mb = $('#xMas'); mb.hidden = L.length <= 25; mb.textContent = xTodos ? 'Mostrar solo los 25 primeros' : 'Mostrar los '+L.length+' alimentos';
   xUltimo = {L, tS, tK, nS, nU, conPD, conC, PD, PDp, pvO, cuO, tot, totP, elegido: algo ? XD.filter(d=>XS[d].size).map(d=>[...XS[d]].map(k=>xNom(d,k)).join(', ')).join(' · ') : ''};
   $('#xXls').disabled = !L.length;
-  // precio por kg o L: con un solo alimento, cajas y bigotes por UT/OCT; si no, los alimentos con precios más dispares entre servicios
+  // precio por kg o L de un alimento: cajas y bigotes por UT/OCT; cada punto es el precio que paga un servicio alimentario
   const unA = L.length===1 ? L[0] : null;
-  if (!unA){ xCaja = null; precioAtipico(F); return; }
+  if (!unA){ xCaja = null; $('#xPrecioH').textContent = 'Precio pagado por kg o L, por UT/OCT'; $('#xPrecioN').textContent = 'Elija un solo alimento (en el segmentador, en la tabla o en los gráficos de arriba) para comparar el precio que pagan por él los servicios de cada UT/OCT.'; $('#xPrecio').innerHTML = ''; return; }
   const pv = {};   // por servicio: monto y cantidad del alimento
   F.forEach(r=>{ if (!(r.kg>0)) return; const o = pv[r.c] || (pv[r.c] = {c:r.c, ut:r.ut, s:0, kg:0}); o.s += r.s; o.kg += r.kg; });
   const g = {};
@@ -857,26 +857,6 @@ function explorar(){
   $('#xPrecioH').textContent = 'Precio pagado por kg o L de '+minIni(xCaja.nom)+', por UT/OCT';
   $('#xPrecioN').textContent = 'Cada punto es el precio que paga un servicio alimentario (monto entre cantidad de su pedido). Las filas se ordenan por la mediana, de mayor a menor; las líneas laterales llegan al precio mínimo y al máximo. La línea punteada marca el promedio ponderado de la selección: '+pKg(tS,tK)+' por kg o L.'+(aVar && FAMV[unA.k].length>1 ? ' Junta '+FAMV[unA.k].length+' variedades, que pueden tener precios distintos.' : '')+(UT==='TODAS' ? ' Toque el nombre de una UT/OCT para filtrarla.' : '');
   cajasPrecio();
-}
-// precios por kg o L fuera de lo común: más del doble o menos de la mitad de la mediana del alimento entre los servicios que lo piden
-function precioAtipico(F){
-  $('#xPrecioH').textContent = 'Precios por kg o L fuera de lo común';
-  const m = {};
-  F.forEach(r=>{ if (!(r.kg>0)) return; const k = aK(r.a), o = m[k] || (m[k] = {}), x = o[r.c] || (o[r.c] = {c:r.c, ut:r.ut, s:0, kg:0}); x.s += r.s; x.kg += r.kg; });
-  // por alimento: precio de cada servicio (monto entre cantidad); fuera de lo común si es más del doble o menos de la mitad de la mediana.
-  // «Monto en juego»: lo que esos servicios pagarían de más o de menos frente a la mediana; ordena la lista.
-  const L = Object.entries(m).map(([k, sv])=>{ const P = Object.values(sv).map(x=>Object.assign(x, {p: x.s/x.kg})).sort((a,b)=>a.p-b.p);
-      const md = cuantil(P.map(x=>x.p), .5), fuera = P.filter(x=>x.p > 2*md || x.p < md/2);
-      return {k:+k, n:P.length, mn:P[0].p, md, mx:P[P.length-1].p, fuera, juego: sum(fuera.map(x=>Math.abs(x.s - x.kg*md)))}; })
-    .filter(o=>o.n>=8 && o.fuera.length).sort((a,b)=>b.juego-a.juego || b.fuera.length-a.fuera.length).slice(0,10);
-  $('#xPrecioN').textContent = L.length ? 'Alimentos pedidos por 8 servicios o más en los que algún servicio paga más del doble o menos de la mitad del precio mediano por kg o L. Suelen indicar un error de unidad o de registro en la herramienta. Se ordenan por el monto en juego: lo que esos servicios pagan de más o de menos frente a la mediana. Toque un alimento para ver sus precios por UT/OCT.'
-    : 'En la selección no hay alimentos con precios por kg o L fuera de lo común (más del doble o menos de la mitad del precio mediano entre los servicios que lo piden). Elija un alimento para ver sus precios por UT/OCT.';
-  const fp = v => 'S/ '+nf2.format(v);
-  $('#xPrecio').innerHTML = !L.length ? '' : '<div class="scroll"><table class="cmp atip"><thead><tr><th>Alimento</th><th class="n">Servicios</th><th class="n">Mínimo</th><th class="n">Mediana</th><th class="n">Máximo</th><th class="n">Fuera de lo común</th><th class="n">Monto en juego</th></tr></thead><tbody>'+
-    L.map(o=>{ const q = o.fuera.slice().sort((a,b)=>Math.abs(b.s-b.kg*o.md)-Math.abs(a.s-a.kg*o.md));
-      const tip = '<b>'+esc(aNom(o.k))+'</b> · mediana '+fp(o.md)+' por kg o L<br>'+q.slice(0,6).map(x=>{ const s = byCui[x.c]; return esc(s ? s.sa : x.c)+' ('+esc(utN(x.ut))+'): '+fp(x.p)+' · '+fKg(x.kg)+' kg o L por '+S0(x.s); }).join('<br>')+(q.length>6 ? '<br>y '+(q.length-6)+' más' : '');
-      return '<tr><td><a href="#" class="salink" data-xa="'+o.k+'" title="Ver sus precios por UT/OCT">'+esc(aNom(o.k))+'</a></td><td class="n">'+o.n+'</td><td class="n">'+fp(o.mn)+'</td><td class="n">'+fp(o.md)+'</td><td class="n">'+fp(o.mx)+'</td>'+
-        '<td class="n" data-tipw data-tip="'+esc(tip)+'"><b>'+o.fuera.length+'</b> '+(o.fuera.length===1 ? 'servicio' : 'servicios')+'</td><td class="n">'+S0(o.juego)+'</td></tr>'; }).join('')+'</tbody></table></div>';
 }
 let xCaja = null;
 function cajasPrecio(){

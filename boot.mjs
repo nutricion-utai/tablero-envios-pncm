@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
-import { getFirestore, doc, collection, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
+import { getFirestore, doc, collection, onSnapshot, getDoc, getDocs } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
 
 // Configuración web del proyecto de Firebase (no es secreta: la base solo se puede leer)
 const db = getFirestore(initializeApp({
@@ -90,6 +90,8 @@ function suscribirMes(p, conservarVista) {
 
 /* datos generales (meta) de otro mes, para comparar meses en la pestaña Diversidad: una lectura por mes */
 window.__metaMes = p => getDoc(doc(db, 'periodos', p)).then(sn => sn.exists() ? JSON.parse(sn.data().d) : null);
+/* servicios (con su pedido) de otro mes, para comparar meses en la pestaña Alimentos: una lectura por mes */
+window.__utsMes = p => getDocs(collection(db, 'periodos', p, 'ut')).then(qs => { const L = []; qs.forEach(d => { try { L.push(...JSON.parse(d.data().d).sa); } catch (_) {} }); return L; });
 
 window.__cambiarMes = p => {
   if (!(p in window.__ENVVIG)) return;

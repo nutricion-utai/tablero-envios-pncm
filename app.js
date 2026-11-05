@@ -101,7 +101,13 @@ function llenarFiltros(){
   $('#fSAF').value = SAF;
   try{ localStorage.setItem('envios_sec',SEC); localStorage.setItem('envios_ut',UT); localStorage.setItem('envios_cg',CG); localStorage.setItem('envios_saf',SAF); }catch(_){}
   const lb = $('#fLimpiar'); if (lb) lb.disabled = !(SEC || UT!=='TODAS' || CG || SAF);
+  ftogTxt();
 }
+// en celular los filtros van plegados detrás del botón «Filtros», que resume lo elegido
+function ftogTxt(){ const b = $('#fTog'); if (!b) return; const n = [SEC, UT!=='TODAS', CG, SAF].filter(Boolean).length;
+  const que = SAF ? (byCui[SAF]||{}).sa : CG ? 'CG '+CG : UT!=='TODAS' ? UT : SEC ? secNom() : 'todas las UT';
+  $('#fTogT').textContent = 'Filtros · '+mesTxt(D.periodo)+' · '+que; b.classList.toggle('act', n>0); }
+$('#fTog').addEventListener('click', ()=>{ const bar = document.querySelector('.bar'); const ab = bar.classList.toggle('abierta'); $('#fTog').setAttribute('aria-expanded', String(ab)); });
 llenarFiltros();
 // fija los tres filtros y vuelve a dibujar; con un solo servicio, su ficha queda abierta en el detalle
 function fijarFiltro(ut, cg, saf){ if (ut!=='TODAS' && !enSec(ut)) SEC = '';   // una UT/OCT de otro sectorista quita el filtro de sectorista
@@ -142,15 +148,21 @@ $('#hMeta').innerHTML = 'Datos al ' +
 
 // -------- helpers de gráficos
 function hbars(el, rows, opt){
-  // rows: {name, value, color, label, tip, mark}
-  const max = opt.max || Math.max(...rows.map(r=>r.value), 1e-9);
-  el.classList.add('hb');
+  // rows: {name, value, color, label, tip, go | goUT | pick, on, segs:[{value,color}], mark}
+  // pick 'd:k' hace que la barra filtre el explorador; on la resalta; segs apila partes; mark es una raya (p. ej., el mes anterior)
+  const max = opt.max || Math.max(...rows.map(r=>Math.max(r.value, r.mark||0)), 1e-9);
+  el.classList.add('hb'); el.classList.toggle('dim', !!opt.dim);
   el.innerHTML = rows.map(r => {
     const w = Math.max(0, Math.min(100, r.value/max*100));
-    const nm = r.go ? '<a href="#" class="salink" data-saf="'+r.go+'" title="Ver solo este servicio alimentario">'+esc(r.name)+'</a>' : r.goUT ? '<a href="#" class="salink" data-ut="'+esc(r.goUT)+'">'+esc(r.name)+'</a>' : esc(r.name);
-    return '<div class="hbar" data-tip="'+esc(r.tip||'')+'"><div class="nm" title="'+esc(r.name)+'">'+nm+'</div>'+
-      '<div class="track">'+(opt.ref!=null?'<i class="ref" style="left:'+(opt.ref/max*100)+'%"'+(opt.refTip?' title="'+esc(opt.refTip)+'"':'')+'></i>':'')+
-      '<div class="fill" style="width:'+w+'%;background:'+(r.color||'var(--azul)')+'"></div></div>'+
+    const nm = r.go ? '<a href="#" class="salink" data-saf="'+r.go+'" title="Ver solo este servicio alimentario">'+esc(r.name)+'</a>' : r.goUT ? '<a href="#" class="salink" data-ut="'+esc(r.goUT)+'">'+esc(r.name)+'</a>'
+      : r.pick ? '<button type="button" class="pk" aria-pressed="'+(!!r.on)+'">'+esc(r.name)+'</button>' : esc(r.name);
+    let fill;
+    if (r.segs){ const S = r.segs.filter(g=>g.value>0); let x = 0;
+      fill = S.map((g,i)=>{ const sw = Math.max(0, Math.min(100-x, g.value/max*100)); const h = '<div class="fill" style="left:'+x.toFixed(3)+'%;width:'+sw.toFixed(3)+'%;background:'+g.color+';border-radius:'+(i===S.length-1?'0 4px 4px 0':'0')+'"></div>'; x += sw; return h; }).join('');
+    } else fill = '<div class="fill" style="width:'+w+'%;background:'+(r.color||'var(--azul)')+'"></div>';
+    const mk = r.mark>0 ? '<i class="mk" style="left:'+Math.min(100, r.mark/max*100).toFixed(2)+'%"></i>' : '';
+    return '<div class="hbar'+(r.pick?' pick':'')+(r.on?' on':'')+'"'+(r.pick?' data-xpick="'+esc(r.pick)+'"':'')+' data-tip="'+esc(r.tip||'')+'"><div class="nm" title="'+esc(r.name)+'">'+nm+'</div>'+
+      '<div class="track">'+(opt.ref!=null?'<i class="ref" style="left:'+(opt.ref/max*100)+'%"'+(opt.refTip?' title="'+esc(opt.refTip)+'"':'')+'></i>':'')+fill+mk+'</div>'+
       '<div class="v">'+r.label+'</div></div>';
   }).join('') || '<p class="note">Sin datos para esta selección.</p>';
 }
@@ -534,39 +546,170 @@ function nino(){
     tip:'<b>'+esc(s.sa)+'</b><br>'+S2(s.costCons[0])+' (pedido '+S2(s.cost[0])+' y saldos '+S2(s.saldo[0])+') para '+s.ninos+' niñas y niños en '+s.dias+' días · tarifa '+AMB[s.amb].toLowerCase()+' S/ '+nf2.format(TARIFA[s.amb][0])})), {ref:md});
 }
 
-// -------- alimentos
-let metric = 's';
-$('#mS').onclick = ()=>{metric='s'; $('#mS').setAttribute('aria-pressed','true'); $('#mK').setAttribute('aria-pressed','false'); foods();};
-$('#mK').onclick = ()=>{metric='kg'; $('#mK').setAttribute('aria-pressed','true'); $('#mS').setAttribute('aria-pressed','false'); foods();};
-// medida del gráfico por grupo de alimentos (independiente de la de los 15 alimentos)
-let gMet = 's';
-const gMetSet = m => { gMet = m; $('#gS').setAttribute('aria-pressed', String(m==='s')); $('#gK').setAttribute('aria-pressed', String(m==='kg')); };
+// ================= ALIMENTOS =================
+// Medida: total del mes o por persona y día (personas-día: niñas, niños y actores comunales por los días de atención del mes de
+// cada servicio). Variedades de un mismo alimento juntas o separadas. Comparación con el mes anterior. Los dos gráficos de arriba
+// y el explorador comparten la segmentación: tocar una barra filtra el explorador y lo elegido en él filtra los gráficos.
+let metric = 's', gMet = 's', aBase = 't', aVar = false, aCmp = false;
+const segSet = (a, b, primero) => { $(a).setAttribute('aria-pressed', String(primero)); $(b).setAttribute('aria-pressed', String(!primero)); };
+const gMetSet = m => { gMet = m; segSet('#gS', '#gK', m==='s'); };
+$('#mS').onclick = ()=>{ metric = 's'; segSet('#mS', '#mK', true); foods(); };
+$('#mK').onclick = ()=>{ metric = 'kg'; segSet('#mS', '#mK', false); foods(); };
 $('#gS').onclick = ()=>{ gMetSet('s'); foods(); };
 $('#gK').onclick = ()=>{ gMetSet('kg'); foods(); };
-function foodAgg(){
-  const set = new Set(sel().map(s=>s.cui)); const agg = {};
-  D.food.forEach(([c,a,t,kg,s])=>{ if(!set.has(c)) return; const k=a; const o = agg[k]||(agg[k]={a,t,kg:0,s:0,n:new Set()}); o.kg+=kg; o.s+=s; o.n.add(c); });
-  return Object.values(agg);
+
+// nombres para leer: alimentos en minúscula (con sus siglas) y UT/OCT con tildes, como en los informes
+const alN = n => { const t = String(n||'').toLowerCase().replace(/\buht\b/g, 'UHT'); return t.charAt(0).toUpperCase() + t.slice(1); };
+const UT_TILDE = {ANCASH:'Áncash', APURIMAC:'Apurímac', JUNIN:'Junín', HUANUCO:'Huánuco', MARTIN:'Martín', JAEN:'Jaén', CANETE:'Cañete', VRAEM:'VRAEM'};
+const UT_MIN = new Set(['Y','E','DE','DEL','LA','LAS','LOS','EL']);
+const utN = u => { const tc = s => s.split(/\s+/).map((w,i)=>{ const k = w.normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase();
+    if (UT_TILDE[k]) return UT_TILDE[k]; if (i && UT_MIN.has(k)) return w.toLowerCase(); return w.charAt(0).toUpperCase()+w.slice(1).toLowerCase(); }).join(' ');
+  const p = String(u||'').trim().split(/\s+CT\s+/i); return p.length>1 ? tc(p[0])+' – OCT '+tc(p[1]) : tc(p[0]); };
+
+// variedades: el nombre sin lo que va entre paréntesis al final, dentro del mismo grupo (papa canchán, papa yungay → papa)
+const famBase = n => String(n||'').replace(/\s*\([^()]*\)\s*$/, '').trim() || String(n||'');
+const FAM = [], FAMN = [], FAMV = [];
+{ const m = {}; D.alimentos.forEach(([n,g],i)=>{ const k = famBase(n)+'|'+g; if (!(k in m)){ m[k] = FAMN.length; FAMN.push([famBase(n), g]); FAMV.push([]); } FAM[i] = m[k]; FAMV[m[k]].push(i); }); }
+const aK = a => a<0 ? -1 : aVar ? FAM[a] : a;                                  // clave del alimento según «Agrupar variedades»
+const aNom = k => k<0 ? 'Alimento que no se pide este mes' : alN(aVar ? FAMN[k][0] : D.alimentos[k][0]);
+const minIni = t => { t = String(t||''); return /^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]/.test(t) ? t.charAt(0).toLowerCase()+t.slice(1) : t; };   // «Leche UHT entera» → «leche UHT entera»
+const aVarTxt = k => aVar && k>=0 && FAMV[k].length>1 ? '<br>'+FAMV[k].length+' variedades: '+FAMV[k].map(i=>esc(alN(D.alimentos[i][0]))).join(', ') : '';
+
+// medida: total del mes o por persona y día
+const pdS = s => !s ? 0 : ((s.ninos!=null ? s.ninos : sum(s.u||[])) + (s.acs!=null ? s.acs : sum(s.ac||[]))) * (s.dias||0);   // también con los datos crudos de otro mes
+const vB = (o, m, pd) => aBase==='pd' ? (pd ? (m==='s' ? o.s/pd : o.kg*1000/pd) : 0) : (m==='s' ? o.s : o.kg);
+const nB = (v, m) => aBase==='pd' ? (m==='s' ? 'S/ '+nf2.format(v) : (Math.abs(v)<10 ? nf1 : nf0).format(v)) : (m==='s' ? S0(v) : fKg(v));
+const uB = m => aBase==='pd' ? (m==='s' ? 'por persona y día' : 'g o mL por persona y día') : (m==='s' ? '' : 'kg o L');
+const fB = (v, m) => nB(v, m) + (uB(m) ? ' '+uB(m) : '');
+const qB = m => (m==='s' ? 'costo' : 'volumen') + (aBase==='pd' ? ' por persona y día' : '');
+const colT = t => t ? 'var(--magenta)' : 'var(--azul)';
+const LEG_T = '<span><i class="sw" style="background:var(--azul)"></i>No perecible</span><span><i class="sw" style="background:var(--magenta)"></i>Perecible</span>';
+
+// mes anterior (para comparar): se lee una sola vez y se vuelve a leer si tiene más de 10 minutos
+const mesAnt = (()=>{ const L = (window.__MESES||[]).slice().sort(), i = L.indexOf(D.periodo); return i>0 ? L[i-1] : null; })();
+const mesAntTxt = mesAnt ? mesTxt(mesAnt) : '';
+const PREVC = window.__ALIMPREV || (window.__ALIMPREV = {});
+const utStd = u => { const k = String(u==null?'':u).normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/\s+/g,' ').trim();
+  return ({'CALLAO':'CALLAO Y LIMA NORTE', 'LIMA PROVINCIA':'LIMA PROVINCIAS'})[k] || u; };
+let prevMemo = null;
+function prevArmar(meta, L){
+  const gm = (meta && meta.gmap) || {}, ai = {}, gi = {}, sa = {}, rows = [];
+  D.alimentos.forEach(([n],i)=>{ ai[n] = i; }); D.grupos.forEach((g,i)=>{ gi[g] = i; });
+  (L||[]).forEach(s=>{ const ut = utStd(s.ut); sa[s.cui] = {ut, cg: s.cg, pd: pdS(s)};
+    (s.food||[]).forEach(f=>{ const gn = gm[f[0]] || 'OTROS'; rows.push({c: s.cui, ut, a: f[0] in ai ? ai[f[0]] : -1, g: gn in gi ? gi[gn] : -1, t: f[1], kg: f[2], s: f[3]}); }); });
+  return {sa, rows, nSa: Object.keys(sa).length};
 }
+function prevDatos(){   // undefined: cargando · null: sin datos
+  if (!mesAnt || typeof window.__utsMes!=='function' || typeof window.__metaMes!=='function') return null;
+  const o = PREVC[mesAnt], fresco = o && o.raw && Date.now()-o.t < 600000;
+  if (!fresco && !(o && o.cargando)){
+    PREVC[mesAnt] = Object.assign({}, o, {cargando: 1});
+    Promise.all([window.__metaMes(mesAnt), window.__utsMes(mesAnt)])
+      .then(raw=>{ PREVC[mesAnt] = {t: Date.now(), raw}; }, ()=>{ PREVC[mesAnt] = {t: Date.now(), raw: [null, []]}; })
+      .then(()=>{ if (!AC.signal.aborted && aCmp) aliRender(); });
+  }
+  const r = PREVC[mesAnt] && PREVC[mesAnt].raw;
+  if (!r) return undefined;
+  if (!prevMemo || prevMemo.raw !== r) prevMemo = {raw: r, d: (r[1] && r[1].length) ? prevArmar(r[0], r[1]) : null};
+  return prevMemo.d;
+}
+// filas del mes anterior con los filtros de arriba (sectorista, UT/OCT, comité y servicio)
+const prevFilas = P => P.rows.filter(r=>{ const s = P.sa[r.c]; return (UT==='TODAS' ? enSec(r.ut) : r.ut===UT) && (!CG || nCG(s.cg)===CG) && (!SAF || String(r.c)===String(SAF)); });
+const dPct = (v, p) => p>0 ? (v>=p ? '+' : '−')+nf1.format(Math.abs(v/p-1)*100)+' %' : v>0 ? 'nuevo' : '—';
+const dCls = (v, p) => p>0 && Math.abs(v/p-1) >= 0.0005 ? (v>p ? 'dpos' : 'dneg') : '';
+// estado de la comparación: {P, Rp} si hay datos; {cargando} mientras llegan; null si está apagada o no hay mes anterior
+function cmpEstado(R){
+  if (!aCmp) return null;
+  const P = prevDatos(); if (P===undefined) return {cargando: true}; if (!P) return null;
+  return {P, Rp: prevFilas(P)};
+}
+// personas-día de los servicios de las filas (cada servicio una vez); con UT/OCT elegidas en el explorador, solo las de esas UT/OCT
+function pdFilas(R, P){ const vist = new Set(); let t = 0;
+  R.forEach(r=>{ if (vist.has(r.c) || (XS.ut.size && !XS.ut.has(r.ut))) return; vist.add(r.c); t += P ? ((P.sa[r.c]||{}).pd||0) : pdS(byCui[r.c]); }); return t; }
+
+// barra de la pestaña: textos de ayuda y estado de la comparación
+function aliCtl(C, R){
+  segSet('#aBaseT', '#aBaseP', aBase==='t'); $('#aVar').checked = aVar; $('#aCmp').checked = aCmp && !!mesAnt; $('#aCmp').disabled = !mesAnt;
+  $('#aCmpL').textContent = mesAnt ? 'Comparar con '+mesAntTxt : 'Comparar con el mes anterior (no hay datos publicados)';
+  const t = [];
+  if (aBase==='pd') t.push('<b>Por persona y día:</b> el pedido entre las personas-día atendidas (niñas, niños y actores comunales por los días de atención del mes de cada servicio). Permite comparar UT/OCT y servicios de distinto tamaño; el pedido incluye las raciones de los actores comunales.');
+  if (aVar) t.push('<b>Variedades juntas:</b> se suman las variedades de un mismo alimento dentro de su grupo (papa canchán, papa yungay y papa amarilla cuentan como papa).');
+  if (aCmp && C && C.cargando) t.push('Cargando los pedidos de '+esc(mesAntTxt)+'…');
+  else if (aCmp && C && C.P){ const nA = new Set(C.Rp.map(r=>r.c)).size, nN = new Set((R||[]).map(r=>r.c)).size;
+    t.push('<b>Comparado con '+esc(mesAntTxt)+'</b> (raya negra en los gráficos): '+nf0.format(nA)+' servicios con pedido en la selección, frente a '+nf0.format(nN)+' este mes.'+
+      (Math.min(nA, nN) < 0.8*Math.max(nA, nN) ? ' Como el número de servicios es muy distinto, la comparación es solo referencial.' : '')+
+      (aBase==='t' ? ' Con «Total del mes», las diferencias también reflejan cuántos servicios enviaron; «Por persona y día» las compara sin ese efecto.' : '')); }
+  else if (aCmp && mesAnt) t.push('No hay pedidos publicados de '+esc(mesAntTxt)+' para comparar.');
+  $('#aliN').innerHTML = t.join(' ');
+}
+$('#aBaseT').onclick = ()=>{ aBase = 't'; aliRender(); };
+$('#aBaseP').onclick = ()=>{ aBase = 'pd'; aliRender(); };
+$('#aVar').addEventListener('change', e=>{ const v = e.target.checked; if (v===aVar) return;
+  // lo elegido en el segmentador de alimentos pasa a la otra forma (variedad → alimento o alimento → sus variedades)
+  const sel0 = [...XS.a]; XS.a.clear();
+  sel0.forEach(k=>{ if (v) XS.a.add(FAM[k]); else FAMV[k].forEach(i=>XS.a.add(i)); });
+  aVar = v; xTodos = false; aliRender(); });
+$('#aCmp').addEventListener('change', e=>{ aCmp = e.target.checked; aliRender(); });
+
+// gráficos de arriba: siguen la segmentación del explorador (cada uno sin la de su propia dimensión, para mostrar lo elegido resaltado)
 function foods(){
-  const A = foodAgg();
-  const tot = sum(A.map(o=>o[metric]));
-  const top = A.sort((x,y)=>y[metric]-x[metric]).slice(0,15);
-  hbars($('#cFood'), top.map(o=>({name:D.alimentos[o.a][0], value:o[metric], color:o.t?'var(--magenta)':'var(--azul)',
-    label: metric==='s'? S0(o.s) : nf0.format(o.kg),
-    tip:'<b>'+esc(D.alimentos[o.a][0])+'</b><br>'+(o.t?'Perecible':'No perecible')+'<br>'+S0(o.s)+' · '+nf1.format(o.kg)+' kg o L<br>'+P1(tot?o[metric]/tot:0)+' del total · pedido por '+o.n.size+' servicios'})), {});
-  // grupos
-  const M = gMet, g = {}, tt = {np:{s:0,kg:0}, p:{s:0,kg:0}};
-  A.forEach(o=>{ const k=D.grupos[D.alimentos[o.a][1]]; const e = g[k]||(g[k]={s:0,kg:0,n:new Set()}); e.s+=o.s; e.kg+=o.kg; o.n.forEach(c=>e.n.add(c));
-    const t = o.t ? tt.p : tt.np; t.s+=o.s; t.kg+=o.kg; });
-  const np = tt.np[M], p = tt.p[M], T = np+p;
-  const fm = M==='s' ? S0 : v => nf0.format(v)+' kg o L', que = M==='s' ? 'costo' : 'volumen';
-  $('#hGrupo').textContent = (M==='s' ? 'Costo' : 'Volumen')+' por grupo de alimentos';
-  $('#npNote').textContent = 'Del '+que+' total, '+P1(T?np/T:0)+' corresponde a no perecibles ('+fm(np)+') y '+P1(T?p/T:0)+' a perecibles ('+fm(p)+').';
-  const gr = Object.entries(g).sort((a,b)=>b[1][M]-a[1][M]);
-  hbars($('#cGrupo'), gr.map(([k,v])=>({name:k.charAt(0)+k.slice(1).toLowerCase(), value:v[M], label:P1(T?v[M]/T:0),
-    tip:'<b>'+esc(k)+'</b><br>'+S0(v.s)+' · '+nf1.format(v.kg)+' kg o L<br>'+P1(T?v[M]/T:0)+' del '+que+' total · pedido por '+v.n.size+' servicios'})), {});
+  const R = xFilas(), C = cmpEstado(R), PD = pdFilas(R), PDp = C && C.P ? pdFilas(C.Rp, C.P) : 0;
+  const agg = (L, key, conSv) => { const m = {}; L.forEach(r=>{ const k = key(r); if (k<0 && !conSv) return; const o = m[k] || (m[k] = {k, t:r.t, s:0, kg:0, np:{s:0,kg:0}, p:{s:0,kg:0}, n:new Set(), top:{}});
+    o.s += r.s; o.kg += r.kg; const tt = r.t ? o.p : o.np; tt.s += r.s; tt.kg += r.kg;
+    if (conSv){ o.n.add(r.c); const a = aK(r.a), x = o.top[a] || (o.top[a] = {s:0, kg:0}); x.s += r.s; x.kg += r.kg; } }); return m; };
+  const prevTxt = (v, pv, m) => pv==null ? '' : '<br>'+esc(mesAntTxt)+': '+fB(pv, m)+' ('+dPct(v, pv)+')';
+  // los 15 alimentos con más peso
+  const RA = R.filter(r=>xPasa(r, 'a')), A = Object.values(agg(RA, r=>aK(r.a), true));
+  const pA = C && C.P ? agg(C.Rp.filter(r=>xPasa(r, 'a')), r=>aK(r.a), false) : null;
+  const m = metric, totA = sum(A.map(o=>m==='s'?o.s:o.kg));
+  const top = A.sort((x,y)=>vB(y,m,PD)-vB(x,m,PD)).slice(0,15);
+  $('#hFood').textContent = (aVar ? 'Los 15 alimentos (con variedades juntas)' : 'Los 15 alimentos')+' con más peso en el pedido'+(aBase==='pd' ? ', por persona y día' : '');
+  $('#lFood').innerHTML = LEG_T + (pA ? '<span><i class="mk"></i>'+esc(mesAntTxt)+'</span>' : '');
+  hbars($('#cFood'), top.map(o=>{ const v = vB(o,m,PD), pv = pA ? vB(pA[o.k]||{s:0,kg:0}, m, PDp) : null;
+    return {name: aNom(o.k), value: v, color: colT(o.t), label: nB(v, m), pick: 'a:'+o.k, on: XS.a.has(o.k), mark: pv,
+      tip: '<b>'+esc(aNom(o.k))+'</b><br>'+TIPO_N[o.t]+'<br>'+S0(o.s)+' · '+fKg(o.kg)+' kg o L'+(aBase==='pd' ? '<br>'+fB(vB(o,'s',PD),'s')+' · '+fB(vB(o,'kg',PD),'kg') : '')+
+        '<br>'+P1(totA ? (m==='s'?o.s:o.kg)/totA : 0)+' del '+(m==='s'?'costo':'volumen')+' · pedido por '+o.n.size+' servicios'+aVarTxt(o.k)+prevTxt(v, pv, m)+
+        '<br><i>'+(XS.a.has(o.k) ? 'Toque para quitar el filtro' : 'Toque para filtrar el explorador')+'</i>'}; }), {dim: XS.a.size>0});
+  // costo o volumen por grupo; con un solo grupo elegido, sus alimentos (y el botón para volver a todos los grupos)
+  const M = gMet, uno = XS.g.size===1 ? [...XS.g][0] : null;
+  $('#gBack').hidden = uno==null;
+  if (uno!=null){
+    const RG = R.filter(r=>xPasa(r, 'a')), G = Object.values(agg(RG, r=>aK(r.a), true));
+    const pG = C && C.P ? agg(C.Rp.filter(r=>xPasa(r, 'a')), r=>aK(r.a), false) : null;
+    const T = sum(G.map(o=>M==='s'?o.s:o.kg));
+    $('#hGrupo').textContent = (M==='s' ? 'Costo' : 'Volumen')+' de los alimentos de '+capG(D.grupos[uno]).toLowerCase()+(aBase==='pd' ? ', por persona y día' : '');
+    $('#npNote').textContent = G.length+(G.length===1 ? ' alimento' : ' alimentos')+(aVar ? ' (con variedades juntas)' : '')+' del grupo, '+fB(vB({s:sum(G.map(o=>o.s)), kg:sum(G.map(o=>o.kg))}, M, PD), M)+' en total. Toque un alimento para filtrar el explorador.';
+    $('#lGrupo').innerHTML = LEG_T + (pG ? '<span><i class="mk"></i>'+esc(mesAntTxt)+'</span>' : '');
+    hbars($('#cGrupo'), G.sort((x,y)=>vB(y,M,PD)-vB(x,M,PD)).map(o=>{ const v = vB(o,M,PD), pv = pG ? vB(pG[o.k]||{s:0,kg:0}, M, PDp) : null;
+      return {name: aNom(o.k), value: v, color: colT(o.t), label: aBase==='pd' ? nB(v, M) : P1(T ? (M==='s'?o.s:o.kg)/T : 0), pick: 'a:'+o.k, on: XS.a.has(o.k), mark: pv,
+        tip: '<b>'+esc(aNom(o.k))+'</b><br>'+S0(o.s)+' · '+fKg(o.kg)+' kg o L<br>'+P1(T ? (M==='s'?o.s:o.kg)/T : 0)+' del '+(M==='s'?'costo':'volumen')+' del grupo · pedido por '+o.n.size+' servicios'+aVarTxt(o.k)+prevTxt(v, pv, M)+
+          '<br><i>'+(XS.a.has(o.k) ? 'Toque para quitar el filtro' : 'Toque para filtrar el explorador')+'</i>'}; }), {dim: XS.a.size>0});
+    return;
+  }
+  const RG = R.filter(r=>xPasa(r, 'g')), G = Object.values(agg(RG, r=>r.g, true));
+  const pG = C && C.P ? agg(C.Rp.filter(r=>xPasa(r, 'g')), r=>r.g, false) : null;
+  const np = sum(G.map(o=>M==='s'?o.np.s:o.np.kg)), p = sum(G.map(o=>M==='s'?o.p.s:o.p.kg)), T = np + p;
+  const fm = v => aBase==='pd' ? fB(vB({s:v, kg:v}, M, PD), M) : M==='s' ? S0(v) : fKg(v)+' kg o L';
+  $('#hGrupo').textContent = (M==='s' ? 'Costo' : 'Volumen')+' por grupo de alimentos'+(aBase==='pd' ? ', por persona y día' : '');
+  $('#npNote').textContent = 'Del '+(M==='s'?'costo':'volumen')+' total'+(aBase==='pd' ? ' ('+fm(T)+')' : '')+', '+P1(T?np/T:0)+' corresponde a no perecibles ('+fm(np)+') y '+P1(T?p/T:0)+' a perecibles ('+fm(p)+'). Toque un grupo para ver sus alimentos.';
+  $('#lGrupo').innerHTML = LEG_T + (pG ? '<span><i class="mk"></i>'+esc(mesAntTxt)+'</span>' : '');
+  hbars($('#cGrupo'), G.sort((x,y)=>vB(y,M,PD)-vB(x,M,PD)).map(o=>{ const v = vB(o,M,PD), pv = pG ? vB(pG[o.k]||{s:0,kg:0}, M, PDp) : null;
+    const t3 = Object.entries(o.top).sort((a,b)=>(M==='s' ? b[1].s-a[1].s : b[1].kg-a[1].kg)).slice(0,3)
+      .map(([k,x])=>esc(aNom(+k))+' ('+P1((M==='s'?o.s:o.kg) ? (M==='s'?x.s:x.kg)/(M==='s'?o.s:o.kg) : 0)+')');
+    return {name: capG(D.grupos[o.k]), value: v, segs: [{value: vB(o.np,M,PD), color:'var(--azul)'}, {value: vB(o.p,M,PD), color:'var(--magenta)'}],
+      label: aBase==='pd' ? nB(v, M) : P1(T ? (M==='s'?o.s:o.kg)/T : 0), pick: 'g:'+o.k, on: XS.g.has(o.k), mark: pv,
+      tip: '<b>'+esc(capG(D.grupos[o.k]))+'</b><br>'+S0(o.s)+' · '+fKg(o.kg)+' kg o L'+(aBase==='pd' ? '<br>'+fB(vB(o,'s',PD),'s')+' · '+fB(vB(o,'kg',PD),'kg') : '')+
+        '<br>'+P1(T ? (M==='s'?o.s:o.kg)/T : 0)+' del '+(M==='s'?'costo':'volumen')+' total · pedido por '+o.n.size+' servicios'+
+        ((o.np.s>0 && o.p.s>0) ? '<br>No perecible '+fm(M==='s'?o.np.s:o.np.kg)+' · perecible '+fm(M==='s'?o.p.s:o.p.kg) : '')+
+        (t3.length ? '<br>Principales: '+t3.join(', ') : '')+prevTxt(v, pv, M)+'<br><i>Toque para ver sus alimentos</i>'}; }), {dim: XS.g.size>0});
 }
+$('#gBack').addEventListener('click', ()=>{ XS.g.clear(); xTodos = false; aliRender(); });
+// tocar una barra: filtra el explorador por ese alimento o grupo (un segundo toque lo quita)
+on('click', e=>{ const h = e.target.closest('.hbar[data-xpick]'); if (!h) return; e.preventDefault();
+  const [d, v] = h.dataset.xpick.split(':'), k = +v;
+  if (XS[d].size===1 && XS[d].has(k)) XS[d].clear(); else { XS[d].clear(); XS[d].add(k); }
+  if (d==='g') XS.a.clear();
+  xTodos = false; aliRender(); });
 
 // -------- proveedores
 function prov(){
@@ -588,79 +731,152 @@ const XS = {ut:new Set(), t:new Set(), g:new Set(), a:new Set()};
 let xMet = 's', xQ = '', xSortK = 'v', xSortD = -1, xTodos = false;
 const capG = g => { g = String(g||''); return g.charAt(0)+g.slice(1).toLowerCase(); };
 const TIPO_N = ['No perecible','Perecible'];
-const xKey = (r,d) => d==='ut' ? r.ut : d==='t' ? r.t : d==='g' ? r.g : r.a;
-const xNom = (d,k) => d==='ut' ? k : d==='t' ? TIPO_N[k] : d==='g' ? capG(D.grupos[k]) : D.alimentos[k][0];
+const xKey = (r,d) => d==='ut' ? r.ut : d==='t' ? r.t : d==='g' ? r.g : aK(r.a);
+const xNom = (d,k) => d==='ut' ? utN(k) : d==='t' ? TIPO_N[k] : d==='g' ? capG(D.grupos[k]) : aNom(k);
 const xPasa = (r, salvo) => XD.every(d=> d===salvo || !XS[d].size || XS[d].has(xKey(r,d)));
 const fKg = v => (Math.abs(v) < 10 ? nf1 : nf0).format(v);
-const xFmt = (o, m) => (m||xMet)==='s' ? S0(o.s) : fKg(o.kg)+' kg o L';
 const pKg = (s, kg) => kg > 0 ? 'S/ '+nf2.format(s/kg) : '—';
-ICO_TARJ['monto pedido'] = 'costo'; ICO_TARJ['servicios alimentarios'] = 'sa'; ICO_TARJ['unidades territoriales'] = 'ut';
+Object.assign(ICO, {
+  peso:'<path d="M6.5 8h11l2.5 12h-16z"/><path d="M9 8a3 3 0 0 1 6 0"/>',
+  caja:'<path d="M3 7.5l9-4.5 9 4.5v9l-9 4.5-9-4.5z"/><path d="M3 7.5l9 4.5 9-4.5M12 12v9"/>',
+  hoja:'<path d="M5 20c0-9 6-15 15-15 0 9-6 15-15 15z"/><path d="M5 20l9-9"/>'
+});
+Object.assign(ICO_TARJ, {'monto pedido':'costo', 'cantidad':'peso', 'alimentos no perecibles':'caja', 'alimentos perecibles':'hoja', 'servicios alimentarios':'sa', 'unidades territoriales':'ut'});
 function xFilas(){
   const set = new Set(sel().map(s=>s.cui)), R = [];
   D.food.forEach(([c,a,t,kg,s])=>{ if (!set.has(c)) return; const sv = byCui[c]; R.push({c, ut: sv ? sv.ut : '—', a, g: D.alimentos[a][1], t, kg, s}); });
   return R;
 }
-function xSlicer(d, R){
+// en los segmentadores largos, un difuminado al pie avisa que se puede desplazar
+const marcarScroll = el => el.classList.toggle('mas', el.scrollHeight > el.clientHeight + 2 && el.scrollTop + el.clientHeight < el.scrollHeight - 2);
+on('scroll', e=>{ const t = e.target; if (t && t.classList && t.classList.contains('xs-l')) marcarScroll(t); }, {capture: true, passive: true});
+function xSlicer(d, R, PD, C){
+  const el = $('#xs_'+d); if (!el) return;
   const base = new Map();
   R.forEach(r=>{ const k = xKey(r,d); if (!base.has(k)) base.set(k, {k, s:0, kg:0}); });
   R.forEach(r=>{ if (!xPasa(r,d)) return; const o = base.get(xKey(r,d)); o.s += r.s; o.kg += r.kg; });
-  let L = [...base.values()].sort((x,y)=> (y[xMet]-x[xMet]) || String(xNom(d,x.k)).localeCompare(String(xNom(d,y.k)),'es'));
+  // por persona y día: cada UT/OCT con sus propias personas-día; los demás segmentadores, con las de la selección
+  const pdUT = (L, P) => { const m = {}, vist = new Set(); L.forEach(r=>{ if (vist.has(r.c)) return; vist.add(r.c); m[r.ut] = (m[r.ut]||0) + (P ? ((P.sa[r.c]||{}).pd||0) : pdS(byCui[r.c])); }); return m; };
+  const pdU = d==='ut' && aBase==='pd' ? pdUT(R) : null;
+  const val = o => vB(o, xMet, pdU ? pdU[o.k] : PD);
+  let pv = null, pvVal = null;
+  if (C && C.P){ pv = {}; C.Rp.forEach(r=>{ if (!xPasa(r,d)) return; const k = xKey(r,d); const o = pv[k] || (pv[k] = {s:0, kg:0}); o.s += r.s; o.kg += r.kg; });
+    const pdUp = d==='ut' && aBase==='pd' ? pdUT(C.Rp, C.P) : null, PDp = pdFilas(C.Rp, C.P);
+    pvVal = k => pv[k] ? vB(pv[k], xMet, pdUp ? pdUp[k] : PDp) : 0; }
+  let L = [...base.values()].sort((x,y)=> (val(y)-val(x)) || String(xNom(d,x.k)).localeCompare(String(xNom(d,y.k)),'es'));
   if (d==='a' && xQ){ const q = nUT(xQ); L = L.filter(o=> XS.a.has(o.k) || nUT(xNom('a',o.k)).includes(q)); }
-  const mx = Math.max(1e-9, ...L.map(o=>o[xMet])), tot = sum(L.map(o=>o[xMet]));
-  const el = $('#xs_'+d); if (!el) return;
-  el.innerHTML = L.map(o=>{ const on = XS[d].has(o.k), cero = !o[xMet] && !on;
-    const tip = '<b>'+esc(xNom(d,o.k))+'</b><br>'+S0(o.s)+' · '+fKg(o.kg)+' kg o L'+(tot?'<br>'+P1(o[xMet]/tot)+' de lo que muestra este segmentador':'')+(on?'<br>Elegido: toque para quitarlo':'<br>Toque para filtrar');
+  const mx = Math.max(1e-9, ...L.map(val)), tot = sum(L.map(o=>xMet==='s'?o.s:o.kg));
+  el.innerHTML = L.map(o=>{ const on = XS[d].has(o.k), v = val(o), cero = !(xMet==='s'?o.s:o.kg) && !on;
+    const tip = '<b>'+esc(xNom(d,o.k))+'</b><br>'+S0(o.s)+' · '+fKg(o.kg)+' kg o L'+(aBase==='pd' ? '<br>'+fB(v, xMet) : '')+
+      (tot && !pdU ? '<br>'+P1((xMet==='s'?o.s:o.kg)/tot)+' de lo que muestra este segmentador' : '')+(d==='a' ? aVarTxt(o.k) : '')+
+      (pvVal ? '<br>'+esc(mesAntTxt)+': '+fB(pvVal(o.k), xMet)+' ('+dPct(v, pvVal(o.k))+')' : '')+(on ? '<br>Elegido: toque para quitarlo' : '<br>Toque para filtrar');
     return '<button type="button" class="xs-it'+(cero?' cero':'')+'" data-xd="'+d+'" data-xk="'+esc(String(o.k))+'" aria-pressed="'+on+'"'+(cero?' disabled':'')+' data-tip="'+esc(tip)+'">'+
-      '<span class="xs-n">'+(d==='t'?'<i class="sw" style="background:'+(o.k?'var(--magenta)':'var(--azul)')+'"></i>':'')+esc(xNom(d,o.k))+'</span><span class="xs-v">'+xFmt(o)+'</span>'+
-      '<span class="xs-b"><span style="width:'+(o[xMet]/mx*100).toFixed(1)+'%;background:'+(d==='t'?(o.k?'var(--magenta)':'var(--azul)'):'var(--azul)')+'"></span></span></button>'; }).join('')
+      '<span class="xs-n">'+(d==='t'?'<i class="sw" style="background:'+colT(o.k)+'"></i>':'')+esc(xNom(d,o.k))+'</span><span class="xs-v">'+nB(v, xMet)+(aBase==='t' && xMet==='kg' ? ' kg o L' : '')+'</span>'+
+      '<span class="xs-b"><span style="width:'+(v/mx*100).toFixed(1)+'%;background:'+(d==='t'?colT(o.k):'var(--azul)')+'"></span></span></button>'; }).join('')
     || '<p class="note" style="margin:6px 2px">'+(d==='a'&&xQ ? 'Ningún alimento coincide con la búsqueda.' : 'Sin datos para esta selección.')+'</p>';
+  const c = $('#xc_'+d); if (c) c.textContent = L.length > 1 ? nf0.format(L.length) : '';
   const q = document.querySelector('[data-xq="'+d+'"]'); if (q) q.hidden = !XS[d].size;
+  requestAnimationFrame(()=>marcarScroll(el));
 }
+let xUltimo = null;   // filas de la tabla «Detalle por alimento» (todas), para el Excel
 function explorar(){
   if (!$('#xKpi')) return;
   const R = xFilas();
+  // con una UT/OCT elegida en el filtro de arriba, el segmentador de UT/OCT no se usa
+  const utFija = UT!=='TODAS';
+  if (utFija) XS.ut.clear();
   // lo elegido que ya no está en la selección de arriba se quita
   XD.forEach(d=>{ const hay = new Set(R.map(r=>xKey(r,d))); [...XS[d]].forEach(k=>{ if (!hay.has(k)) XS[d].delete(k); }); });
-  XD.forEach(d=>xSlicer(d, R));
-  const F = R.filter(r=>xPasa(r, null));
+  const C = cmpEstado(R), PD = pdFilas(R), PDp = C && C.P ? pdFilas(C.Rp, C.P) : 0;
+  XD.forEach(d=>{ if (d==='ut' && utFija) return; xSlicer(d, R, PD, C); });
+  if (utFija){ $('#xs_ut').innerHTML = '<p class="note" style="margin:6px 2px">Solo <b>'+esc(utN(UT))+'</b>, elegida en el filtro «Unidad territorial» de arriba. Para comparar UT/OCT, elija «Todas las UT» en ese filtro.</p>';
+    $('#xc_ut').textContent = ''; $('#xs_ut').classList.remove('mas'); }
+  const F = R.filter(r=>xPasa(r, null)), Fp = C && C.P ? C.Rp.filter(r=>xPasa(r, null)) : null;
   const tS = sum(F.map(r=>r.s)), tK = sum(F.map(r=>r.kg)), totS = sum(R.map(r=>r.s));
-  const nA = new Set(F.map(r=>r.a)).size, nS = new Set(F.map(r=>r.c)).size, nU = new Set(F.map(r=>r.ut)).size;
+  const nNP = new Set(F.filter(r=>!r.t).map(r=>aK(r.a))).size, nP = new Set(F.filter(r=>r.t).map(r=>aK(r.a))).size;
+  const nA = nNP + nP, nS = new Set(F.map(r=>r.c)).size, nU = new Set(F.map(r=>r.ut)).size;
   const algo = XD.some(d=>XS[d].size);
   $('#xLimpiar').disabled = !algo;
-  $('#xSel').innerHTML = algo ? 'Elegido: '+XD.filter(d=>XS[d].size).map(d=>'<b>'+[...XS[d]].map(k=>esc(xNom(d,k))).join(', ')+'</b>').join(' · ') : 'Sin segmentación: se muestra todo el pedido de la selección de arriba.';
+  const elegido = XD.filter(d=>XS[d].size).map(d=>'<b>'+[...XS[d]].map(k=>esc(xNom(d,k))).join(', ')+'</b>').join(' · ');
+  $('#xSel').innerHTML = algo ? 'Elegido: '+elegido : 'Sin segmentación: se muestra todo el pedido de la selección de arriba.';
+  $('#pSel').hidden = !algo;
+  $('#pSel').innerHTML = algo ? '<span>Elegido en el explorador: '+elegido+'</span><button type="button" class="lnk" id="pLimpiar">Quitar la segmentación</button>' : '';
+  const tot = {s:tS, kg:tK}, totP = Fp ? {s:sum(Fp.map(r=>r.s)), kg:sum(Fp.map(r=>r.kg))} : null;
+  const cmpTxt = m => !aCmp ? '' : C && C.cargando ? '<span class="cmp">'+esc(mesAntTxt)+': cargando…</span>'
+    : totP ? '<span class="cmp">'+esc(mesAntTxt)+': '+fB(vB(totP, m, PDp), m)+' (<b>'+dPct(vB(tot, m, PD), vB(totP, m, PDp))+'</b>)</span>' : '';
   const tiles = [
-    ['Monto pedido', S0(tS), algo && totS ? P1(tS/totS)+' del monto de la selección' : 'pedido vigente, sin saldos'],
-    ['Cantidad', fKg(tK), 'kg o L'+(nA===1 && tK ? ' · '+pKg(tS,tK)+' por kg o L' : '')],
-    ['Alimentos', nf0.format(nA), 'distintos en el pedido'],
+    ['Monto pedido', nB(vB(tot,'s',PD),'s'), (aBase==='pd' ? 'por persona y día · '+S0(tS)+' en el mes' : algo && totS ? P1(tS/totS)+' del monto de la selección' : 'pedido vigente, sin saldos')+cmpTxt('s')],
+    ['Cantidad', nB(vB(tot,'kg',PD),'kg'), (aBase==='pd' ? 'g o mL por persona y día · '+fKg(tK)+' kg o L en el mes' : 'kg o L')+(nA===1 && tK ? ' · '+pKg(tS,tK)+' por kg o L' : '')+cmpTxt('kg')],
+    ['Alimentos no perecibles', nf0.format(nNP), aVar ? 'distintos, con variedades juntas' : 'distintos en el pedido'],
+    ['Alimentos perecibles', nf0.format(nP), aVar ? 'distintos, con variedades juntas' : 'distintos en el pedido'],
     ['Servicios alimentarios', nf0.format(nS), 'que los piden'],
-    ['Unidades territoriales', nf0.format(nU), nU===1 ? esc(F[0].ut) : 'con pedido']
+    ['Unidades territoriales', nf0.format(nU), nU===1 ? esc(utN(F[0].ut)) : 'con pedido']
   ];
   $('#xKpi').innerHTML = tiles.map(t=>'<div class="kpi">'+labI(t[0])+'<span class="val">'+t[1]+'</span><span class="sub">'+t[2]+'</span></div>').join('');
   // detalle por alimento
   const m = {};
-  F.forEach(r=>{ const o = m[r.a] || (m[r.a] = {a:r.a, g:r.g, t:r.t, s:0, kg:0, sv:new Set(), u:new Set()}); o.s += r.s; o.kg += r.kg; o.sv.add(r.c); o.u.add(r.ut); });
-  const val = {n:o=>D.alimentos[o.a][0], g:o=>capG(D.grupos[o.g]), t:o=>o.t, kg:o=>o.kg, v:o=>o.s, p:o=>o.kg>0?o.s/o.kg:-1, sv:o=>o.sv.size, u:o=>o.u.size};
+  F.forEach(r=>{ const k = aK(r.a); const o = m[k] || (m[k] = {k, g:r.g, t:r.t, s:0, kg:0, sv:new Set(), u:new Set()}); o.s += r.s; o.kg += r.kg; o.sv.add(r.c); o.u.add(r.ut); });
+  const mp = {}; if (Fp) Fp.forEach(r=>{ const k = aK(r.a); if (k<0) return; const o = mp[k] || (mp[k] = {s:0, kg:0}); o.s += r.s; o.kg += r.kg; });
+  const conPD = aBase==='pd', conC = !!Fp;
+  const pvO = o => mp[o.k] ? vB(mp[o.k], xMet, PDp) : 0, cuO = o => vB(o, xMet, PD);
+  const val = {n:o=>aNom(o.k), g:o=>capG(D.grupos[o.g]), t:o=>o.t, kg:o=>o.kg, v:o=>o.s, p:o=>o.kg>0?o.s/o.kg:-1, sv:o=>o.sv.size, u:o=>o.u.size,
+    pg:o=>vB(o,'kg',PD), ps:o=>vB(o,'s',PD), pa:o=>pvO(o), dv:o=>{ const p = pvO(o); return p>0 ? cuO(o)/p-1 : (cuO(o)>0 ? 1e9 : -1e9); }};
+  if (!val[xSortK] || (!conPD && /^p[gs]$/.test(xSortK)) || (!conC && /^(pa|dv)$/.test(xSortK))){ xSortK = 'v'; xSortD = -1; }
   const L = Object.values(m).sort((x,y)=>{ const a = val[xSortK](x), b = val[xSortK](y);
     const c = typeof a==='string' ? a.localeCompare(b,'es') : (a>b?1:a<b?-1:0); return c*xSortD || (y.s-x.s); });
-  const cols = [['n','Alimento',0],['g','Grupo',0],['t','Tipo',0],['kg','Cantidad<br>(kg o L)',1],['v','Monto<br>(S/)',1],['pc','% del<br>monto',1],['p','S/ por<br>kg o L',1],['sv','Servicios',1],['u','UT/OCT',1]];
+  const cols = [['n','Alimento',0],['g','Grupo',0],['t','Tipo',0],['kg','Cantidad<br>(kg o L)',1],['v','Monto<br>(S/)',1],['pc','% del<br>monto',1],['p','S/ por<br>kg o L',1]]
+    .concat(conPD ? [['pg','g o mL por<br>persona y día',1],['ps','S/ por<br>persona y día',1]] : [])
+    .concat(conC ? [['pa',esc(mesAntTxt.replace(/^./,c=>c.toUpperCase()))+'<br>('+(xMet==='s'?'monto':'cantidad')+(conPD?' por p. y día':'')+')',1],['dv','Variación',1]] : [])
+    .concat([['sv','Servicios',1],['u','UT/OCT',1]]);
   const vis = xTodos ? L : L.slice(0,25);
-  $('#xTabN').textContent = L.length ? L.length+(L.length===1?' alimento':' alimentos')+' en la selección. Toque un encabezado para ordenar; toque un alimento para filtrar por él. El precio por kg o L es el promedio ponderado: monto entre cantidad.' : '';
+  const tP = totP ? vB(totP, xMet, PDp) : 0, tC = vB(tot, xMet, PD);
+  $('#xTabN').textContent = L.length ? L.length+(L.length===1?' alimento':' alimentos')+(aVar?' (con variedades juntas)':'')+' en la selección. Toque un encabezado para ordenar; toque un alimento para filtrar por él. El precio por kg o L es el promedio ponderado: monto entre cantidad.'+
+    (conC ? ' La variación compara '+(xMet==='s'?'el monto':'la cantidad')+(conPD?' por persona y día':'')+' con '+mesAntTxt+'.' : '') : '';
+  const celdaVar = (c, p) => '<td class="n '+dCls(c,p)+'">'+dPct(c,p)+'</td>';
   $('#xTab').innerHTML = !L.length ? '' : '<thead><tr>'+cols.map(([k,t,n])=>'<th class="'+(k==='pc'?'':'sort')+(n?' n':'')+'"'+(k==='pc'?'':' tabindex="0" data-xs="'+k+'"')+'>'+t+(xSortK===k?(xSortD>0?' ↑':' ↓'):'')+'</th>').join('')+'</tr></thead><tbody>'+
-    vis.map(o=>'<tr><td><a href="#" class="salink" data-xa="'+o.a+'" title="Filtrar por este alimento">'+esc(D.alimentos[o.a][0])+'</a></td><td>'+esc(capG(D.grupos[o.g]))+'</td><td><i class="sw" style="background:'+(o.t?'var(--magenta)':'var(--azul)')+'"></i>'+TIPO_N[o.t]+'</td>'+
-      '<td class="n">'+fKg(o.kg)+'</td><td class="n">'+S0(o.s)+'</td><td class="n">'+P1(tS?o.s/tS:0)+'</td><td class="n">'+pKg(o.s,o.kg)+'</td><td class="n">'+o.sv.size+'</td><td class="n">'+o.u.size+'</td></tr>').join('')+
-    '<tr class="xs-tot"><td colspan="3">Total</td><td class="n">'+fKg(tK)+'</td><td class="n">'+S0(tS)+'</td><td class="n">100.0 %</td><td></td><td class="n">'+nS+'</td><td class="n">'+nU+'</td></tr></tbody>';
+    vis.map(o=>'<tr><td><a href="#" class="salink" data-xa="'+o.k+'" title="'+esc((XS.a.size===1 && XS.a.has(o.k)) ? 'Quitar el filtro de este alimento' : 'Filtrar por este alimento')+'">'+esc(aNom(o.k))+'</a>'+(aVar && FAMV[o.k].length>1 ? '<span class="sub2" data-tip="'+esc(aVarTxt(o.k).slice(4))+'">'+FAMV[o.k].length+' variedades</span>' : '')+'</td><td>'+esc(capG(D.grupos[o.g]))+'</td><td><i class="sw" style="background:'+colT(o.t)+'"></i>'+TIPO_N[o.t]+'</td>'+
+      '<td class="n">'+fKg(o.kg)+'</td><td class="n">'+S0(o.s)+'</td><td class="n">'+P1(tS?o.s/tS:0)+'</td><td class="n">'+pKg(o.s,o.kg)+'</td>'+
+      (conPD ? '<td class="n">'+nB(vB(o,'kg',PD),'kg')+'</td><td class="n">'+nB(vB(o,'s',PD),'s')+'</td>' : '')+
+      (conC ? '<td class="n">'+(pvO(o)>0 ? nB(pvO(o), xMet) : '—')+'</td>'+celdaVar(cuO(o), pvO(o)) : '')+
+      '<td class="n">'+o.sv.size+'</td><td class="n">'+o.u.size+'</td></tr>').join('')+
+    '<tr class="xs-tot"><td>Total</td><td></td><td></td><td class="n">'+fKg(tK)+'</td><td class="n">'+S0(tS)+'</td><td class="n">100.0 %</td><td></td>'+
+      (conPD ? '<td class="n">'+nB(vB(tot,'kg',PD),'kg')+'</td><td class="n">'+nB(vB(tot,'s',PD),'s')+'</td>' : '')+
+      (conC ? '<td class="n">'+nB(tP, xMet)+'</td>'+celdaVar(tC, tP) : '')+
+      '<td class="n">'+nS+'</td><td class="n">'+nU+'</td></tr></tbody>';
   const mb = $('#xMas'); mb.hidden = L.length <= 25; mb.textContent = xTodos ? 'Mostrar solo los 25 primeros' : 'Mostrar los '+L.length+' alimentos';
-  // precio por kg o L de un alimento: cajas y bigotes por UT/OCT; cada punto es el precio que paga un servicio alimentario
+  xUltimo = {L, tS, tK, nS, nU, conPD, conC, PD, PDp, pvO, cuO, tot, totP, elegido: algo ? XD.filter(d=>XS[d].size).map(d=>[...XS[d]].map(k=>xNom(d,k)).join(', ')).join(' · ') : ''};
+  $('#xXls').disabled = !L.length;
+  // precio por kg o L: con un solo alimento, cajas y bigotes por UT/OCT; si no, los alimentos con precios más dispares entre servicios
   const unA = L.length===1 ? L[0] : null;
-  if (!unA){ xCaja = null; $('#xPrecioH').textContent = 'Precio pagado por kg o L, por UT/OCT'; $('#xPrecioN').textContent = 'Elija un solo alimento (en el segmentador o en la tabla) para comparar el precio que pagan por él los servicios de cada UT/OCT.'; $('#xPrecio').innerHTML = ''; return; }
+  if (!unA){ xCaja = null; precioAtipico(F); return; }
   const pv = {};   // por servicio: monto y cantidad del alimento
   F.forEach(r=>{ if (!(r.kg>0)) return; const o = pv[r.c] || (pv[r.c] = {c:r.c, ut:r.ut, s:0, kg:0}); o.s += r.s; o.kg += r.kg; });
   const g = {};
   Object.values(pv).forEach(o=>{ const u = g[o.ut] || (g[o.ut] = {ut:o.ut, s:0, kg:0, P:[]}); u.s += o.s; u.kg += o.kg; u.P.push({c:o.c, p:o.s/o.kg, kg:o.kg, s:o.s}); });
-  xCaja = {nom: capG(D.alimentos[unA.a][0]), ref: tK ? tS/tK : 0, rows: Object.values(g)};
-  $('#xPrecioH').textContent = 'Precio pagado por kg o L de '+xCaja.nom+', por UT/OCT';
-  $('#xPrecioN').textContent = 'Cada punto es el precio que paga un servicio alimentario (monto entre cantidad de su pedido). Las filas se ordenan por la mediana, de mayor a menor; las líneas laterales llegan al precio mínimo y al máximo. La línea punteada marca el promedio ponderado de la selección: '+pKg(tS,tK)+' por kg o L. Toque el nombre de una UT/OCT para filtrarla.';
+  xCaja = {nom: aNom(unA.k), ref: tK ? tS/tK : 0, rows: Object.values(g)};
+  $('#xPrecioH').textContent = 'Precio pagado por kg o L de '+minIni(xCaja.nom)+', por UT/OCT';
+  $('#xPrecioN').textContent = 'Cada punto es el precio que paga un servicio alimentario (monto entre cantidad de su pedido). Las filas se ordenan por la mediana, de mayor a menor; las líneas laterales llegan al precio mínimo y al máximo. La línea punteada marca el promedio ponderado de la selección: '+pKg(tS,tK)+' por kg o L.'+(aVar && FAMV[unA.k].length>1 ? ' Junta '+FAMV[unA.k].length+' variedades, que pueden tener precios distintos.' : '')+(UT==='TODAS' ? ' Toque el nombre de una UT/OCT para filtrarla.' : '');
   cajasPrecio();
+}
+// precios por kg o L fuera de lo común: más del doble o menos de la mitad de la mediana del alimento entre los servicios que lo piden
+function precioAtipico(F){
+  $('#xPrecioH').textContent = 'Precios por kg o L fuera de lo común';
+  const m = {};
+  F.forEach(r=>{ if (!(r.kg>0)) return; const k = aK(r.a), o = m[k] || (m[k] = {}), x = o[r.c] || (o[r.c] = {c:r.c, ut:r.ut, s:0, kg:0}); x.s += r.s; x.kg += r.kg; });
+  // por alimento: precio de cada servicio (monto entre cantidad); fuera de lo común si es más del doble o menos de la mitad de la mediana.
+  // «Monto en juego»: lo que esos servicios pagarían de más o de menos frente a la mediana; ordena la lista.
+  const L = Object.entries(m).map(([k, sv])=>{ const P = Object.values(sv).map(x=>Object.assign(x, {p: x.s/x.kg})).sort((a,b)=>a.p-b.p);
+      const md = cuantil(P.map(x=>x.p), .5), fuera = P.filter(x=>x.p > 2*md || x.p < md/2);
+      return {k:+k, n:P.length, mn:P[0].p, md, mx:P[P.length-1].p, fuera, juego: sum(fuera.map(x=>Math.abs(x.s - x.kg*md)))}; })
+    .filter(o=>o.n>=8 && o.fuera.length).sort((a,b)=>b.juego-a.juego || b.fuera.length-a.fuera.length).slice(0,10);
+  $('#xPrecioN').textContent = L.length ? 'Alimentos pedidos por 8 servicios o más en los que algún servicio paga más del doble o menos de la mitad del precio mediano por kg o L. Suelen indicar un error de unidad o de registro en la herramienta. Se ordenan por el monto en juego: lo que esos servicios pagan de más o de menos frente a la mediana. Toque un alimento para ver sus precios por UT/OCT.'
+    : 'En la selección no hay alimentos con precios por kg o L fuera de lo común (más del doble o menos de la mitad del precio mediano entre los servicios que lo piden). Elija un alimento para ver sus precios por UT/OCT.';
+  const fp = v => 'S/ '+nf2.format(v);
+  $('#xPrecio').innerHTML = !L.length ? '' : '<div class="scroll"><table class="cmp atip"><thead><tr><th>Alimento</th><th class="n">Servicios</th><th class="n">Mínimo</th><th class="n">Mediana</th><th class="n">Máximo</th><th class="n">Fuera de lo común</th><th class="n">Monto en juego</th></tr></thead><tbody>'+
+    L.map(o=>{ const q = o.fuera.slice().sort((a,b)=>Math.abs(b.s-b.kg*o.md)-Math.abs(a.s-a.kg*o.md));
+      const tip = '<b>'+esc(aNom(o.k))+'</b> · mediana '+fp(o.md)+' por kg o L<br>'+q.slice(0,6).map(x=>{ const s = byCui[x.c]; return esc(s ? s.sa : x.c)+' ('+esc(utN(x.ut))+'): '+fp(x.p)+' · '+fKg(x.kg)+' kg o L por '+S0(x.s); }).join('<br>')+(q.length>6 ? '<br>y '+(q.length-6)+' más' : '');
+      return '<tr><td><a href="#" class="salink" data-xa="'+o.k+'" title="Ver sus precios por UT/OCT">'+esc(aNom(o.k))+'</a></td><td class="n">'+o.n+'</td><td class="n">'+fp(o.mn)+'</td><td class="n">'+fp(o.md)+'</td><td class="n">'+fp(o.mx)+'</td>'+
+        '<td class="n" data-tipw data-tip="'+esc(tip)+'"><b>'+o.fuera.length+'</b> '+(o.fuera.length===1 ? 'servicio' : 'servicios')+'</td><td class="n">'+S0(o.juego)+'</td></tr>'; }).join('')+'</tbody></table></div>';
 }
 let xCaja = null;
 function cajasPrecio(){
@@ -684,12 +900,12 @@ function cajasPrecio(){
   rows.forEach((row,ri)=>{
     const s = row.v, yc = TOP + RH*ri + RH/2, q1=cuantil(s,.25), md=row.md, q3=cuantil(s,.75), mn=s[0], mx=s[s.length-1], pp = row.s/row.kg;
     const quien = v => { const X = row.P.filter(o=>nf2.format(o.p)===nf2.format(v)); const n0 = byCui[X[0].c]; return (n0?esc(n0.sa):'—')+(X.length>1?' y '+(X.length-1)+' más':''); };
-    const tip = '<b>'+esc(row.ut)+'</b> · '+s.length+(s.length===1?' servicio':' servicios')+
+    const tip = '<b>'+esc(utN(row.ut))+'</b> · '+s.length+(s.length===1?' servicio':' servicios')+
       '<br>Mínimo '+fp(mn)+': '+quien(mn)+'<br>Máximo '+fp(mx)+': '+quien(mx)+
       '<br>Cuartiles: '+fp(q1)+' · <b>mediana '+fp(md)+'</b> · '+fp(q3)+'<br>Promedio ponderado '+fp(pp)+' · '+fKg(row.kg)+' kg o L por '+S0(row.s);
     g += '<rect x="'+LW+'" y="'+(yc-RH/2)+'" width="'+(W-LW-RW)+'" height="'+RH+'" fill="transparent" data-tipw data-tip="'+esc(tip)+'"/>';
-    g += (tot ? '<a href="#" class="salink" data-ut="'+esc(row.ut)+'"><text x="0" y="'+(yc-3)+'" style="fill:var(--azul);font-size:12.5px;font-weight:600;text-decoration:underline;cursor:pointer"><title>'+esc(row.ut)+' · toque para filtrar esta UT/OCT</title>'+esc(corta(row.ut, W<520?15:27))+'</text></a>'
-              : '<text x="0" y="'+(yc-3)+'" style="fill:var(--ink);font-size:12.5px;font-weight:600"><title>'+esc(row.ut)+'</title>'+esc(corta(row.ut, W<520?15:27))+'</text>')+
+    g += (tot ? '<a href="#" class="salink" data-ut="'+esc(row.ut)+'"><text x="0" y="'+(yc-3)+'" style="fill:var(--azul);font-size:12.5px;font-weight:600;text-decoration:underline;cursor:pointer"><title>'+esc(utN(row.ut))+' · toque para filtrar esta UT/OCT</title>'+esc(corta(utN(row.ut), W<520?15:27))+'</text></a>'
+              : '<text x="0" y="'+(yc-3)+'" style="fill:var(--ink);font-size:12.5px;font-weight:600"><title>'+esc(utN(row.ut))+'</title>'+esc(corta(utN(row.ut), W<520?15:27))+'</text>')+
          '<text x="0" y="'+(yc+12)+'" style="font-size:11px">'+s.length+(s.length===1?' servicio':' servicios')+' · med. '+fp(md)+'</text>';
     g += '<line x1="'+x(mn)+'" x2="'+x(q1)+'" y1="'+yc+'" y2="'+yc+'" stroke="var(--ink2)" stroke-width="1.5"/><line x1="'+x(q3)+'" x2="'+x(mx)+'" y1="'+yc+'" y2="'+yc+'" stroke="var(--ink2)" stroke-width="1.5"/>'+
          '<line x1="'+x(mn)+'" x2="'+x(mn)+'" y1="'+(yc-6)+'" y2="'+(yc+6)+'" stroke="var(--ink2)" stroke-width="1.5"/><line x1="'+x(mx)+'" x2="'+x(mx)+'" y1="'+(yc-6)+'" y2="'+(yc+6)+'" stroke="var(--ink2)" stroke-width="1.5"/>'+
@@ -706,18 +922,67 @@ function cajasPrecio(){
 { let rzX; window.addEventListener('resize', ()=>{ clearTimeout(rzX); rzX = setTimeout(cajasPrecio, 150); }, {signal: AC.signal}); }
 on('click', e=>{ const b = e.target.closest('[data-xd]'); if (!b || b.disabled) return;
   const d = b.dataset.xd, k = d==='ut' ? b.dataset.xk : +b.dataset.xk;
-  XS[d].has(k) ? XS[d].delete(k) : XS[d].add(k); xTodos = false; explorar(); });
-on('click', e=>{ const b = e.target.closest('[data-xq]'); if (!b) return; XS[b.dataset.xq].clear(); explorar(); });
+  XS[d].has(k) ? XS[d].delete(k) : XS[d].add(k); xTodos = false; aliRender(); });
+on('click', e=>{ const b = e.target.closest('[data-xq]'); if (!b) return; XS[b.dataset.xq].clear(); aliRender(); });
 on('click', e=>{ const a = e.target.closest('[data-xa]'); if (!a) return; e.preventDefault(); e.stopPropagation(); const k = +a.dataset.xa;
-  if (XS.a.size===1 && XS.a.has(k)) XS.a.clear(); else { XS.a.clear(); XS.a.add(k); } explorar(); $('#xs_a').closest('.panel').scrollIntoView({behavior:'smooth', block:'nearest'}); });
+  if (XS.a.size===1 && XS.a.has(k)) XS.a.clear(); else { XS.a.clear(); XS.a.add(k); } aliRender(); $('#xs_a').closest('.panel').scrollIntoView({behavior:'smooth', block:'nearest'}); });
 on('click', e=>{ const th = e.target.closest('#xTab th[data-xs]'); if (!th) return; const k = th.dataset.xs;
-  if (xSortK===k) xSortD = -xSortD; else { xSortK = k; xSortD = (k==='n'||k==='g'||k==='t') ? 1 : -1; } explorar(); });
+  if (xSortK===k) xSortD = -xSortD; else { xSortK = k; xSortD = (k==='n'||k==='g'||k==='t') ? 1 : -1; } aliRender(); });
 on('keydown', e=>{ if ((e.key==='Enter'||e.key===' ') && e.target.matches && e.target.matches('#xTab th[data-xs]')){ e.preventDefault(); e.target.click(); } });
-$('#xLimpiar').addEventListener('click', ()=>{ XD.forEach(d=>XS[d].clear()); xQ=''; $('#xQ').value=''; xTodos=false; explorar(); });
+const xLimpiarTodo = ()=>{ XD.forEach(d=>XS[d].clear()); xQ=''; $('#xQ').value=''; xTodos=false; aliRender(); };
+$('#xLimpiar').addEventListener('click', xLimpiarTodo);
+on('click', e=>{ if (e.target.closest('#pLimpiar')) xLimpiarTodo(); });
 $('#xMas').addEventListener('click', ()=>{ xTodos = !xTodos; explorar(); });
-$('#xQ').addEventListener('input', e=>{ xQ = e.target.value; xSlicer('a', xFilas()); });
-$('#xMetS').onclick = ()=>{ xMet='s'; $('#xMetS').setAttribute('aria-pressed','true'); $('#xMetK').setAttribute('aria-pressed','false'); explorar(); };
-$('#xMetK').onclick = ()=>{ xMet='kg'; $('#xMetK').setAttribute('aria-pressed','true'); $('#xMetS').setAttribute('aria-pressed','false'); explorar(); };
+$('#xQ').addEventListener('input', e=>{ xQ = e.target.value; const R = xFilas(); xSlicer('a', R, pdFilas(R), cmpEstado(R)); });
+$('#xMetS').onclick = ()=>{ xMet='s'; segSet('#xMetS', '#xMetK', true); explorar(); };
+$('#xMetK').onclick = ()=>{ xMet='kg'; segSet('#xMetS', '#xMetK', false); explorar(); };
+// toda la pestaña: explorador, gráficos de arriba y barra de medida
+function aliRender(){ explorar(); foods(); const R = xFilas(); aliCtl(cmpEstado(R), R); }
+// Excel de la tabla «Detalle por alimento» (completa), con la medida, las variedades y la comparación elegidas
+async function descargarDetalle(btn){
+  const U = xUltimo; if (!U || !U.L.length) return;
+  const txt = btn.innerHTML; btn.disabled = true; btn.lastChild.textContent = 'Generando…';
+  try {
+    const X = await cargarXLSX();
+    const mesL = mesTxt(D.periodo), corte = /^\d{4}-\d{2}-\d{2}/.test(String(D.corte)) ? D.corte.slice(8,10)+'/'+D.corte.slice(5,7)+'/'+D.corte.slice(0,4)+' '+D.corte.slice(11)+' h' : 'sin fecha de corte';
+    const nUTs = new Set(U.L.flatMap(o=>[...o.u])).size;
+    const selTxt = SAF ? (byCui[SAF]||{}).sa : CG ? utN(UT)+' · CG '+CG : UT!=='TODAS' ? utN(UT) : SEC ? nUTs+' UT/OCT' : 'Todas las UT/OCT';
+    const mA = mesAntTxt.replace(/^./,c=>c.toUpperCase()), q = xMet==='s' ? 'monto' : 'cantidad';
+    const cab = ['N°','Alimento','Grupo','Tipo','Cantidad (kg o L)','Monto (S/)','% del monto','S/ por kg o L']
+      .concat(U.conPD ? ['g o mL por persona y día','S/ por persona y día'] : [])
+      .concat(U.conC ? [mA+' ('+q+(U.conPD?' por persona y día':'')+')', 'Variación'] : [])
+      .concat(['Servicios','UT/OCT'], aVar ? ['Variedades'] : []);
+    const filas = U.L.map((o,i)=>{ const pv = U.conC ? U.pvO(o) : 0, cu = U.conC ? U.cuO(o) : 0;
+      return [i+1, aNom(o.k), capG(D.grupos[o.g]), TIPO_N[o.t], o.kg, o.s, U.tS ? o.s/U.tS : 0, o.kg>0 ? o.s/o.kg : null]
+        .concat(U.conPD ? [vB(o,'kg',U.PD), vB(o,'s',U.PD)] : [])
+        .concat(U.conC ? [pv>0 ? pv : null, pv>0 ? cu/pv-1 : (cu>0 ? 'nuevo' : null)] : [])
+        .concat([o.sv.size, o.u.size], aVar ? [FAMV[o.k].map(i=>alN(D.alimentos[i][0])).join('; ')] : []); });
+    const tot = ['', 'Total', '', '', U.tK, U.tS, 1, U.tK>0 ? U.tS/U.tK : null]
+      .concat(U.conPD ? [vB(U.tot,'kg',U.PD), vB(U.tot,'s',U.PD)] : [])
+      .concat(U.conC ? (()=>{ const p = U.totP ? vB(U.totP, xMet, U.PDp) : 0, c = vB(U.tot, xMet, U.PD); return [p>0 ? p : null, p>0 ? c/p-1 : null]; })() : [])
+      .concat([U.nS, U.nU], aVar ? [''] : []);
+    const notas = ['Selección: '+selTxt+(U.elegido ? ' · segmentación: '+U.elegido : '')+' · datos al '+corte,
+      'Pedido vigente (no perecibles y perecibles), sin el valor de los saldos usados. Las cantidades suman kilos y litros.'+
+      (U.conPD ? ' Por persona y día: el pedido entre las personas-día atendidas (niñas, niños y actores comunales por los días de atención del mes).' : '')+
+      (aVar ? ' Variedades juntas: se suman las variedades de un mismo alimento dentro de su grupo.' : '')+
+      (U.conC ? ' La variación compara el '+q+(U.conPD?' por persona y día':'')+' con '+mesAntTxt+'.' : '')];
+    const h = X.utils.aoa_to_sheet([['Detalle del pedido por alimento · '+mesL], [notas[0]], [notas[1]], [], cab].concat(filas, [tot]));
+    const nc = cab.length, r0 = 5, r1 = r0 + filas.length;
+    const fmt = (c, z) => { for (let r = r0; r <= r1; r++){ const x = h[X.utils.encode_cell({r, c})]; if (x && typeof x.v==='number') x.z = z; } };
+    fmt(4, '#,##0.0'); fmt(5, '#,##0.00'); fmt(6, '0.0%'); fmt(7, '#,##0.00');
+    let c = 8; if (U.conPD){ fmt(c++, '#,##0.0'); fmt(c++, '#,##0.00'); } if (U.conC){ fmt(c++, U.conPD ? '#,##0.00' : (xMet==='s' ? '#,##0.00' : '#,##0.0')); fmt(c++, '+0.0%;-0.0%;0.0%'); }
+    h['!cols'] = cab.map((t,i)=>({wch: i===0 ? 5 : i===1 ? 40 : i===2 ? 32 : i===3 ? 13 : t==='Variedades' ? 60 : 16}));
+    h['!autofilter'] = {ref: 'A5:'+X.utils.encode_col(nc-1)+r1};
+    h['!merges'] = [0,1,2].map(r=>({s:{r, c:0}, e:{r, c:nc-1}}));
+    const wb = X.utils.book_new(); X.utils.book_append_sheet(wb, h, 'Detalle por alimento');
+    const buf = X.write(wb, {bookType:'xlsx', type:'array'});
+    const nom = 'pedido_por_alimento_'+D.periodo+'_'+(slugPNG(selTxt+(U.elegido ? ' '+U.elegido : ''))||'seleccion')+'.xlsx';
+    await guardarArchivo(new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), nom);
+    btn.innerHTML = txt;
+  } catch(e){ console.error('XLSX', e); btn.lastChild.textContent = 'No se pudo generar el Excel'; setTimeout(()=>{ btn.innerHTML = txt; }, 3000); }
+  finally { btn.disabled = false; }
+}
+$('#xXls').addEventListener('click', e=>descargarDetalle(e.currentTarget));
 
 // RUC válido: 11 dígitos y dígito verificador de SUNAT (pesos 5-4-3-2-7-6-5-4-3-2)
 // RUC de persona natural (empieza con 10 y contiene el DNI): no se publica. En los datos llega como "PN<n>:<v|x>:<largo>:<d|o>".
@@ -1804,7 +2069,7 @@ async function exportarPNG(btn){
     if (ante) { const a = document.createElement('div'); a.className = 'pngante'; a.textContent = ante; w.appendChild(a); }
     if (tit) { const t = document.createElement('div'); t.className = 'pngtit'; t.textContent = tit; w.appendChild(t); }
     const c = p.cloneNode(true);
-    c.querySelectorAll('.pngfila').forEach(x=>x.remove()); c.removeAttribute('id');
+    c.querySelectorAll('.pngfila, .gback, .xlsbtn').forEach(x=>x.remove()); c.removeAttribute('id');
     c.style.overflow = 'visible'; c.style.width = ancho+'px'; c.style.maxWidth = 'none'; c.style.boxSizing = 'border-box'; c.style.margin = '0';
     c.querySelectorAll('.scroll').forEach(x=>{ x.style.overflow = 'visible'; });
     c.querySelectorAll('th, td').forEach(x=>{ if (x.style.transform) x.style.transform = ''; });
@@ -2108,14 +2373,14 @@ on('click', e=>{ const b = e.target.closest('#dvDet button[data-dvf]'); if (!b) 
   document.querySelectorAll('#dvDet button[data-dvf]').forEach(x=>x.setAttribute('aria-pressed', String(!!dvDia && x.dataset.dvf===dvDia.f && +x.dataset.dvg===dvDia.g)));
   dvDiaDet(s); });
 
-function render(){ titulosUT(); kpis(); coberturaNut(); avance(); porDia(); ultimos(); calidad(); ejec(); nino(); foods(); alertasAporte(); resumenCob(); resumenMacro(); graficoMacro(); alertasMacro(); prov(); explorar(); detalle(); if(!$('#vMen').hidden) menuSemanal(true); diversidad(); }
+function render(){ titulosUT(); kpis(); coberturaNut(); avance(); porDia(); ultimos(); calidad(); ejec(); nino(); alertasAporte(); resumenCob(); resumenMacro(); graficoMacro(); alertasMacro(); prov(); aliRender(); detalle(); if(!$('#vMen').hidden) menuSemanal(true); diversidad(); }
 const E0 = arguments[2];
-if (E0){ if (E0.XS) XD.forEach(d=>(E0.XS[d]||[]).forEach(k=>XS[d].add(k))); if (E0.xMet==='kg'){ xMet='kg'; $('#xMetK').setAttribute('aria-pressed','true'); $('#xMetS').setAttribute('aria-pressed','false'); } if (E0.xQ){ xQ=E0.xQ; $('#xQ').value=xQ; } if (E0.SA) SA=E0.SA; if (E0.SEC!==undefined) SEC = SECT[E0.SEC] ? E0.SEC : ''; if (E0.UT && (E0.UT==='TODAS' || uts.includes(E0.UT))){ UT=E0.UT; $('#fUT').value=UT; } CG=E0.CG||''; SAF=E0.SAF||''; llenarFiltros(); if (E0.SEM!=null) SEM=E0.SEM; openCui=E0.openCui; sortK=E0.sortK; sortD=E0.sortD; macSel=E0.macSel; macVista=E0.macVista; $('#q').value=E0.q||''; DIA=E0.DIA; DIAkey=E0.DIAkey; FOCO=E0.FOCO;
+if (E0){ aVar = !!E0.aVar; aBase = E0.aBase==='pd' ? 'pd' : 't'; aCmp = !!E0.aCmp; if (E0.xSortK){ xSortK = E0.xSortK; xSortD = E0.xSortD||-1; } if (E0.XS) XD.forEach(d=>(E0.XS[d]||[]).forEach(k=>XS[d].add(k))); if (E0.xMet==='kg'){ xMet='kg'; $('#xMetK').setAttribute('aria-pressed','true'); $('#xMetS').setAttribute('aria-pressed','false'); } if (E0.xQ){ xQ=E0.xQ; $('#xQ').value=xQ; } if (E0.SA) SA=E0.SA; if (E0.SEC!==undefined) SEC = SECT[E0.SEC] ? E0.SEC : ''; if (E0.UT && (E0.UT==='TODAS' || uts.includes(E0.UT))){ UT=E0.UT; $('#fUT').value=UT; } CG=E0.CG||''; SAF=E0.SAF||''; llenarFiltros(); if (E0.SEM!=null) SEM=E0.SEM; openCui=E0.openCui; sortK=E0.sortK; sortD=E0.sortD; macSel=E0.macSel; macVista=E0.macVista; $('#q').value=E0.q||''; DIA=E0.DIA; DIAkey=E0.DIAkey; FOCO=E0.FOCO;
   if (E0.metric==='kg'){ metric='kg'; $('#mK').setAttribute('aria-pressed','true'); $('#mS').setAttribute('aria-pressed','false'); }
   if (E0.gMet==='kg') gMetSet('kg'); }
 if (E0 && E0.dv){ const v = E0.dv; dvT = v.t; dvEd = v.ed; dvOrdK = v.ok; dvOrdD = v.od; dvSaK = v.sk; dvSaD = v.sd; dvMesM = v.mm; dvSA = v.sa; dvDia = v.dia; dvMasN = v.mas || 60; }
 render();
 { const HV = {'#menu-semanal':'menu', '#envios':'env', '#diversidad':'div', '#alimentos':'ali', '#proveedores':'prov'}; if (HV[location.hash]) tab(HV[location.hash]); }
-return { estado: () => ({dv: {t:dvT, ed:dvEd, ok:dvOrdK, od:dvOrdD, sk:dvSaK, sd:dvSaD, mm:dvMesM, sa:dvSA, dia:dvDia, mas:dvMasN}, XS: Object.fromEntries(XD.map(d=>[d,[...XS[d]]])), xMet, xQ, SA, SEC, UT, CG, SAF, SEM, openCui, sortK, sortD, metric, gMet, macSel, macVista, q:$('#q').value, DIA, DIAkey, FOCO}) };
+return { estado: () => ({dv: {t:dvT, ed:dvEd, ok:dvOrdK, od:dvOrdD, sk:dvSaK, sd:dvSaD, mm:dvMesM, sa:dvSA, dia:dvDia, mas:dvMasN}, XS: Object.fromEntries(XD.map(d=>[d,[...XS[d]]])), xMet, xQ, xSortK, xSortD, aVar, aBase, aCmp, SA, SEC, UT, CG, SAF, SEM, openCui, sortK, sortD, metric, gMet, macSel, macVista, q:$('#q').value, DIA, DIAkey, FOCO}) };
 }
 

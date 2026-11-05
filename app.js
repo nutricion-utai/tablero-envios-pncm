@@ -2290,21 +2290,45 @@ function dvMetodo(){
   const el = $('#dvMet'); if (el.dataset.ok===D.periodo) return; el.dataset.ok = D.periodo;
   const gm = D.gmap || {}, por = [[],[],[],[],[],[],[]], no = [];
   (D.alimentos||[]).forEach(([a])=>{ const c = DVM.clasificar(a, gm[a]||''); (c[0]<0?no:por[c[0]]).push(a.toLowerCase()); });
-  el.innerHTML = '<h3 style="margin-top:0">Puntaje diario</h3><ul>'+
-    '<li>Se evalúa el menú programado del envío vigente de cada servicio alimentario, día por día y por grupo de edad con niñas y niños (6 a 8, 9 a 11, 12 a 23 y 24 a 36 meses). A cada combinación de servicio, día y grupo de edad se le llama <b>menú diario</b>.</li>'+
-    '<li>El menú diario suma la media mañana, el almuerzo de su edad (6 a 8 meses o 9 a 36 meses), la fruta y la media tarde, con los gramos de la receta para esa edad, en parte comestible.</li>'+
-    '<li>El <b>puntaje diario</b> es cuántos de los 7 grupos tiene el menú diario (de 0 a 7). Un grupo cuenta si sus alimentos suman más de 0 g, 10 g o más, o 15 g o más, según lo que se elija arriba (10 g por defecto).</li>'+
-    '<li>Grupos, adaptados de la diversidad alimentaria mínima de OMS/UNICEF (2021), sin la leche materna: '+DVM.GRUPOS.map((g,i)=>(i+1)+') '+g.toLowerCase()).join('; ')+'. Grasas, azúcares, condimentos, hierbas, sal y agua no cuentan.</li>'+
-    '<li>«Menús con 5 o más grupos» usa el corte de la diversidad alimentaria mínima (5 grupos) como referencia.</li></ul>'+
-    '<h3>Promedios y rangos</h3><ul>'+
-    '<li>Servicio: promedio de sus puntajes diarios; cada grupo de edad pesa según sus niñas y niños. Mínimo y máximo: el menú diario más bajo y el más alto del mes.</li>'+
-    '<li>UT/OCT y nacional: promedio de los servicios; <b>cada servicio pesa igual</b>, tenga muchas o pocas niñas y niños. Mínimo y máximo: entre todos sus menús diarios.</li></ul>'+
-    '<h3>Variedad de la semana</h3><ul><li>Alimentos distintos de los 7 grupos en la semana del menú, para cada grupo de edad. Un alimento cuenta si algún día de la semana llega a los gramos elegidos. Las variedades de un mismo alimento cuentan una vez (el texto entre paréntesis no se toma en cuenta).</li>'+
-    '<li>Solo semanas con 4 o más días de atención. Servicio: promedio de sus semanas; UT/OCT y nacional: promedio de los servicios.</li></ul>'+
-    '<h3>Clasificación de los alimentos</h3><p class="dv-cls">Se toma el grupo de la tabla de composición de la herramienta (COMP_ALIMENTOS), con estos ajustes: betarraga como verdura; choclo, maíz mote, harina de plátano y plátano bellaco como cereales; tarwi y ajonjolí con las menestras, nueces y semillas; mantequilla y aceituna no cuentan; el maíz morado no cuenta (se hierve para dar color y sabor). '+
-    'Frutas y verduras fuente de vitamina A (de pulpa anaranjada o amarilla intensa y hojas verde oscuro): zanahoria, zapallo macre, calabaza, camote amarillo, pimiento, espinaca, acelga, mango, papaya, melón, lúcuma, aguaymanto y maracuyá. Esta lista está en revisión.</p>'+
-    '<p class="dv-cls">Alimentos de los pedidos de '+mesTxt(D.periodo)+', por grupo:</p><ul class="dv-gl">'+por.map((L,j)=>'<li class="'+DV_GRC[j]+'"><b>'+esc(DVM.GRUPOS[j])+'</b>'+(L.length?esc(L.join(', ')):'—')+'</li>').join('')+
-      '<li class="no" style="--gc:var(--muted)"><b>No cuentan</b>'+(no.length?esc(no.join(', ')):'—')+'</li></ul>';
+  const EJ = ['arroz, fideos, quinua, avena, harinas, galletas, papa, yuca, olluco, choclo', 'lentejas, frijoles, arvejas secas, habas, tarwi, maní, ajonjolí',
+    'leche, queso, yogur', 'pollo, res, cerdo, hígado, sangrecita, bazo, bofe, pescado y conservas de pescado', 'huevo de gallina y yema',
+    'zanahoria, zapallo, camote amarillo, espinaca, acelga, pimiento, mango, papaya, melón, lúcuma, aguaymanto, maracuyá',
+    'plátanos (también el bellaco), manzana, piña, naranja, tomate, cebolla, betarraga, brócoli, vainita'];
+  const pts = '<span class="dv-pts">'+[0,1,2,3,4,5,6].map(j=>'<i class="'+DV_GRC[j]+'"></i>').join('')+'</span>';
+  const tema = (tit, cab, cuerpo) => '<details class="utal"><summary><span class="utn">'+tit+'</span><span class="utc">'+cab+'</span></summary><div class="dv-mc">'+cuerpo+'</div></details>';
+  const temas = [
+    tema('Qué se evalúa', 'el menú programado de cada día',
+      '<ul><li>El menú programado del <b>envío vigente</b> de cada servicio alimentario del mes.</li>'+
+      '<li>Se mira <b>día por día</b> y por cada <b>grupo de edad</b> con niñas y niños: 6 a 8, 9 a 11, 12 a 23 y 24 a 36 meses. A cada combinación de servicio, día y grupo de edad se le llama <b>menú diario</b>.</li>'+
+      '<li>El menú diario reúne la media mañana, el almuerzo de su edad (6 a 8 meses o 9 a 36 meses), la fruta y la media tarde.</li>'+
+      '<li>Se usan los gramos de las recetas del envío para esa edad, en <b>parte comestible</b> (sin cáscaras, pepas ni huesos).</li></ul>'),
+    tema('Los 7 grupos de alimentos', pts,
+      '<p>Se basan en la diversidad alimentaria mínima de OMS/UNICEF (2021), sin la leche materna.</p><ul class="dv-gl">'+
+      DVM.GRUPOS.map((g,j)=>'<li class="'+DV_GRC[j]+'"><b>'+(j+1)+'. '+esc(g)+'</b>'+EJ[j]+'</li>').join('')+
+      '<li class="no" style="--gc:var(--muted)"><b>No cuentan</b>aceites y grasas, azúcares, sal, condimentos y hierbas aromáticas</li></ul>'),
+    tema('Puntaje diario y gramos mínimos', 'de 0 a 7 grupos',
+      '<ul><li>El <b>puntaje diario</b> es cuántos de los 7 grupos tiene el menú diario: va de 0 a 7.</li>'+
+      '<li>Un grupo cuenta si sus alimentos suman <b>más de 0 g</b>, <b>10 g o más</b> (opción por defecto) o <b>15 g o más</b>, según lo elegido arriba. Con 10 g, por ejemplo, la cebolla del aderezo sola no basta para contar las verduras.</li>'+
+      '<li><b>Menús con 5 o más grupos</b> va como referencia: 5 grupos es el corte de la diversidad alimentaria mínima de OMS/UNICEF.</li></ul>'),
+    tema('Promedios, mínimo y máximo', 'cada servicio pesa igual',
+      '<ul><li><b>Servicio alimentario:</b> promedio de sus puntajes diarios del mes. Si atiende a varias edades, cada edad pesa según sus niñas y niños.</li>'+
+      '<li><b>UT/OCT y nacional:</b> promedio de los servicios. Cada servicio pesa igual, tenga muchas o pocas niñas y niños.</li>'+
+      '<li><b>Mínimo y máximo:</b> el menú diario con menos y con más grupos del mes.</li>'+
+      '<li><b>Diferencia con el nacional:</b> el puntaje promedio menos el valor nacional; la línea punteada de las barras marca ese valor.</li></ul>'),
+    tema('Variedad de la semana', 'alimentos distintos',
+      '<ul><li>Cuenta los <b>alimentos distintos</b> de los 7 grupos que tiene el menú en una semana, para cada grupo de edad.</li>'+
+      '<li>Un alimento cuenta si algún día de la semana llega a los gramos elegidos arriba.</li>'+
+      '<li>Las variedades de un mismo alimento cuentan una vez: mango Kent y mango Edwards son «mango»; arroz extra y arroz superior son «arroz».</li>'+
+      '<li>Solo entran las semanas con <b>4 o más días</b> de atención. Servicio: promedio de sus semanas; UT/OCT y nacional: promedio de los servicios.</li></ul>'),
+    tema('Clasificación de los alimentos de este mes', nf0.format((D.alimentos||[]).length)+' alimentos de los pedidos',
+      '<p>Cada alimento va en el grupo de la tabla de composición de la herramienta (COMP_ALIMENTOS), con estos ajustes: betarraga como verdura; choclo, maíz mote y harina de plátano como cereales; '+
+      'los plátanos, también el bellaco, como frutas; tarwi, maní y ajonjolí con las menestras, nueces y semillas; mantequilla y aceituna no cuentan; el maíz morado no cuenta porque se hierve para dar color y sabor. '+
+      'La lista de frutas y verduras fuente de vitamina A está en revisión.</p><ul class="dv-gl">'+
+      por.map((L,j)=>'<li class="'+DV_GRC[j]+'"><b>'+esc(DVM.GRUPOS[j])+' · '+L.length+'</b>'+(L.length?esc(L.join(', ')):'—')+'</li>').join('')+
+      '<li class="no" style="--gc:var(--muted)"><b>No cuentan · '+no.length+'</b>'+(no.length?esc(no.join(', ')):'—')+'</li></ul>')
+  ];
+  el.innerHTML = '<p class="lede">Cómo se calculan las cifras de esta pestaña. Toque cada tema para ver el detalle.</p>'+
+    '<div class="utals dv-met"><div class="utals-h"><h4>'+temas.length+' temas</h4><span class="utals-b"><button type="button" data-utals="1">Abrir todos</button><button type="button" data-utals="0">Cerrar todos</button></span></div>'+temas.join('')+'</div>';
 }
 // eventos de la pestaña
 $('#dvT').addEventListener('click', e=>{ const b = e.target.closest('[data-t]'); if (!b) return; dvT = +b.dataset.t; try{ localStorage.setItem('envios_dvT', String(dvT)); }catch(_){} diversidad(); });

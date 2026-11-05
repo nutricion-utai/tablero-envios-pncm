@@ -30,11 +30,10 @@
  *      iguales a los de otra edad, va [edad, la otra edad].
  *   v: registros de 24 caracteres: edad, semana y días (base 36) y los
  *      alimentos distintos por grupo (base 36), 7 por umbral, en el orden de UMBRAL
- * Resumen del mes por UT/OCT (meta.dvr), para comparar meses.
  * =========================================================================
  */
 var Diversidad = (function () {
-  const VERSION = 'd1-2026-11-04';
+  const VERSION = 'd2-2026-11-05';   // d2: el plátano bellaco cuenta como fruta
   const GRUPOS = ['Cereales, raíces y tubérculos', 'Menestras, nueces y semillas', 'Lácteos', 'Carnes, vísceras y pescados', 'Huevos',
     'Frutas y verduras fuente de vitamina A', 'Otras frutas y verduras'];
   const CORTO = ['Cereales y tubérculos', 'Menestras y semillas', 'Lácteos', 'Carnes y pescados', 'Huevos', 'Frutas y verduras con vitamina A', 'Otras frutas y verduras'];
@@ -63,7 +62,7 @@ var Diversidad = (function () {
     [/^ACEITUNA/, -1, 'se usa como condimento'],
     [/^(AZUCAR|PANELA|CHANCACA|ALGARROBINA|MIEL|MERMELADA)\b/, -1, 'azúcar'],
     [/^(HUEVO|YEMA|CLARA DE HUEVO)\b/, 4, ''],
-    [/^(CHOCLO|MAIZ MOTE|HARINA DE PLATANO|PLATANO \(BELLACO\)|PLATANO VERDE)/, 0, 'cereal o plátano para cocinar'],
+    [/^(CHOCLO|MAIZ MOTE|HARINA DE PLATANO)/, 0, 'cereal'],
     [/^TARWI/, 1, 'menestra'],
     [/^(MANI|AJONJOLI|LINAZA|CHIA|SACHA INCHI|CASTANA|NUEZ|NUECES|PECANA|ALMENDRA|COCO)\b/, 1, 'nuez o semilla'],
     [/^(BETARRAGA|BETERRAGA)\b/, 6, 'raíz que se come como verdura'],
@@ -224,28 +223,6 @@ var Diversidad = (function () {
     };
   }
 
-  /**
-   * Resumen del mes por UT/OCT para comparar meses (meta.dvr): {v, ut: {UT: celdas}}, con una celda por umbral (3) y
-   * edad (todas, 6-8, 9-11, 12-23, 24-36) en ese orden: [servicios, suma de puntajes promedio, suma de % con 5 o más grupos,
-   * servicios con variedad, suma de variedades]. Las sumas permiten unir UT/OCT (cada servicio pesa igual).
-   */
-  function resumen(sa) {
-    const R = {};
-    const r3 = x => Math.round(x * 1000) / 1000;
-    (sa || []).forEach(s => {
-      if (!s || !s.dv) return;
-      const o = R[s.ut] || (R[s.ut] = []);
-      for (let t = 0; t < UMBRAL.length; t++) [null, 0, 1, 2, 3].forEach((ed, j) => {
-        const k = t * 5 + j, c = o[k] || (o[k] = [0, 0, 0, 0, 0]);
-        const x = servicio(s.dv, s.u, t, ed); if (!x) return;
-        c[0]++; c[1] += x.prom; c[2] += x.p5;
-        if (x.vprom != null) { c[3]++; c[4] += x.vprom; }
-      });
-    });
-    Object.keys(R).forEach(k => { R[k] = R[k].map(c => [c[0], r3(c[1]), r3(c[2]), c[3], r3(c[4])]); });
-    return { v: VERSION, ut: R };
-  }
-
-  return { VERSION, GRUPOS, CORTO, UMBRAL, UMBRAL_TXT, EDADES, MIN_DIAS_SEMANA, clasificar, nombreBase, gramosDia, calcular, fechas, semanas, codigos, variedades, puntaje, servicio, agregar, resumen };
+  return { VERSION, GRUPOS, CORTO, UMBRAL, UMBRAL_TXT, EDADES, MIN_DIAS_SEMANA, clasificar, nombreBase, gramosDia, calcular, fechas, semanas, codigos, variedades, puntaje, servicio, agregar };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = Diversidad;

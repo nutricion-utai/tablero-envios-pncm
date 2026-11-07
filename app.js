@@ -2094,8 +2094,8 @@ const dvDif = (v, r, nd) => { if (v==null || r==null) return '—'; const f = nd
 const DV_GRC = ['dv-g0','dv-g1','dv-g2','dv-g3','dv-g4','dv-g5','dv-g6'];
 const DV_TIEMPO = {0:'Media mañana', 1:'Almuerzo', 2:'Almuerzo', 3:'Media tarde', 4:'Fruta'};
 const dvDiaTxt = f => { const d = new Date(f+'T12:00:00'); return ['dom','lun','mar','mié','jue','vie','sáb'][d.getDay()]+' '+f.slice(8,10)+'/'+f.slice(5,7); };
-const dvBar = (v, ref, max) => '<div class="dvbar"><div class="tr"><span style="width:'+(v==null?0:Math.max(0,Math.min(100,v/max*100)))+'%"></span>'+
-  (ref!=null?'<i style="left:'+Math.min(100,ref/max*100)+'%" title="Nacional: '+esc(dvF(ref))+'"></i>':'')+'</div><b>'+dvF(v)+'</b></div>';
+const dvBar = (v, ref, max, fmt) => { fmt = fmt || dvF; return '<div class="dvbar"><div class="tr"><span style="width:'+(v==null?0:Math.max(0,Math.min(100,v/max*100)))+'%"></span>'+
+  (ref!=null?'<i style="left:'+Math.min(100,ref/max*100)+'%" title="Nacional: '+esc(fmt(ref))+'"></i>':'')+'</div><b>'+fmt(v)+'</b></div>'; };
 // barras horizontales con referencia propia en cada fila (rows: {nm, v, txt, sub, cls, ref, tip})
 function dvBarras(el, rows, max){
   el.className = 'dv-b';
@@ -2206,10 +2206,11 @@ function dvVar(A, N, hf){
 }
 // comparativa: sin UT/OCT elegida, una fila por UT/OCT (las del sectorista, si se eligió uno); con una UT/OCT elegida, una fila
 // por servicio alimentario de la selección (UT/OCT, comité o servicio). Arriba, como referencia, el valor nacional (y el de la UT/OCT).
-const dvCols = porSA => [['ut', porSA?'Servicio alimentario':'UT/OCT'], ['n', porSA?'Niñas y niños':'Servicios', 1], ['prom','Puntaje promedio',1], ['min','Mínimo',1], ['max','Máximo',1],
-  ['dif','Diferencia con el nacional',1], ['p5','Menús con 5 o más grupos',1], ['vprom','Alimentos distintos por semana',1]];
+const dvCols = porSA => [['ut', porSA?'Servicio alimentario':'UT/OCT'], ['n', porSA?'Niñas y niños':'Servicios', 1], ['prom','Puntaje promedio (grupos por día)',1], ['min','Mínimo',1], ['max','Máximo',1],
+  ['vprom','Alimentos distintos por semana',1], ['p5','Menús con 5 o más grupos',1]];
 function dvTabla(N){
   const t = $('#dvUT'), porSA = UT!=='TODAS';
+  if (!dvCols(porSA).some(c=>c[0]===dvOrdK)) { dvOrdK = 'prom'; dvOrdD = -1; }
   const h = $('#dvUtH'); if (h) h.textContent = porSA ? 'Comparativa por servicio alimentario' : 'Comparativa por unidad territorial';
   let rows;
   if (porSA){
@@ -2220,36 +2221,38 @@ function dvTabla(N){
     const esp = {}; filasAvance().rows.forEach(r=>{ esp[r.u] = r.e; });
     rows = Object.keys(por).filter(enSec).map(u=>Object.assign({ut:u, e:esp[u]||por[u].length}, DVM.agregar(por[u]) || {n:0}));
   }
-  const val = {ut:r=>r.ut, n:r=>r.n, prom:r=>r.prom, min:r=>r.min, max:r=>r.max, dif:r=>r.prom, p5:r=>r.p5, vprom:r=>r.vprom}[dvOrdK] || (r=>r.prom);
+  const val = {ut:r=>r.ut, n:r=>r.n, prom:r=>r.prom, min:r=>r.min, max:r=>r.max, p5:r=>r.p5, vprom:r=>r.vprom}[dvOrdK] || (r=>r.prom);
   rows.sort((a,b)=>{ const x=val(a), y=val(b);
     if (x==null || y==null) return x==null && y==null ? a.ut.localeCompare(b.ut,'es') : x==null ? 1 : -1;
     const c = dvOrdK==='ut' ? x.localeCompare(y,'es') : (x>y?1:x<y?-1:0);
     return c ? c*dvOrdD : ((b.prom||0)-(a.prom||0) || a.ut.localeCompare(b.ut,'es')); });
-  const ordTxt = {ut:porSA?'nombre del servicio':'UT/OCT', n:porSA?'niñas y niños':'servicios', prom:'puntaje promedio', min:'mínimo', max:'máximo', dif:'diferencia con el nacional', p5:'menús con 5 o más grupos', vprom:'alimentos distintos por semana'}[dvOrdK];
+  const ordTxt = {ut:porSA?'nombre del servicio':'UT/OCT', n:porSA?'niñas y niños':'servicios', prom:'puntaje promedio', min:'mínimo', max:'máximo', p5:'menús con 5 o más grupos', vprom:'alimentos distintos por semana'}[dvOrdK];
   const edTxt = dvEd==='' ? '' : ' ('+DVM.EDADES[+dvEd]+')';
   $('#dvUtL').textContent = porSA
     ? 'Cada servicio alimentario con su puntaje promedio'+edTxt+', el más bajo y el más alto del mes, ordenados por '+ordTxt+(dvOrdD<0?' de mayor a menor':' de menor a mayor')+
       '. Arriba van el valor nacional y el de '+UT+'; la línea punteada de cada barra marca el nacional. Toque el nombre de un servicio para ver su calendario de grupos por día y edad.'
     : 'Cada UT/OCT con el promedio de sus servicios'+edTxt+', ordenadas por '+ordTxt+(dvOrdD<0?' de mayor a menor':' de menor a mayor')+
       '. La primera fila es el valor nacional; la línea punteada de cada barra también lo marca. Toque un encabezado para ordenar y el nombre de una UT/OCT para ver sus servicios alimentarios.'+(SEC?' Se muestran las UT/OCT de '+secNom()+'.':'');
-  const celdas = (r, ref) => '<td>'+dvBar(r.prom, ref, 7)+'</td><td class="n">'+r.min+'</td><td class="n">'+r.max+'</td>'+
-    '<td class="n dif">'+(ref==null?'—':dvDif(r.prom, ref))+'</td><td class="n">'+dvP(r.p5)+'</td><td class="n">'+dvV(r.vprom)+'</td>';
-  const vacias = '<td>—</td><td class="n">—</td><td class="n">—</td><td class="n dif">—</td><td class="n">—</td><td class="n">—</td>';
+  // escala de la barra de alimentos distintos: el mayor valor de la tabla, redondeado hacia arriba a un múltiplo de 5
+  const U = porSA ? DVM.agregar(D.sa.filter(s=>s.ut===UT).map(s=>dvDe(s))) : null;
+  const vmax = Math.ceil(Math.max(5, ...[N&&N.vprom, U&&U.vprom].concat(rows.map(r=>r.vprom)).filter(v=>v!=null))/5)*5;
+  const celdas = (r, ref, refV) => '<td>'+dvBar(r.prom, ref, 7)+'</td><td class="n">'+r.min+'</td><td class="n">'+r.max+'</td>'+
+    '<td>'+(r.vprom==null?'—':dvBar(r.vprom, refV, vmax, dvV))+'</td><td class="n">'+dvP(r.p5)+'</td>';
+  const vacias = '<td>—</td><td class="n">—</td><td class="n">—</td><td>—</td><td class="n">—</td>';
   const nacFila = N ? '<tr class="nac"><td></td><td>Nacional</td><td class="n">'+(porSA ? '' : N.n+'<span class="sub2">de '+nf0.format(D.padTotal+D.sa.filter(s=>!s.padron).length)+' esperados</span>')+'</td>'+
-    '<td>'+dvBar(N.prom, null, 7)+'</td><td class="n">'+N.min+'</td><td class="n">'+N.max+'</td><td class="n dif">—</td><td class="n">'+dvP(N.p5)+'</td><td class="n">'+dvV(N.vprom)+'</td></tr>' : '';
+    celdas(N, null, null)+'</tr>' : '';
   let utFila = '';
   if (porSA){
-    const U = DVM.agregar(D.sa.filter(s=>s.ut===UT).map(s=>dvDe(s)));
     utFila = '<tr class="nac"><td></td><td><a href="#" class="salink" data-ut="TODAS" title="Quitar el filtro de UT/OCT y volver a la comparativa por UT/OCT">'+esc(UT)+'</a><span class="sub2">promedio de sus '+(U?U.n:0)+' servicios</span></td><td class="n"></td>'+
-      (U ? celdas(U, N?N.prom:null) : vacias)+'</tr>';
+      (U ? celdas(U, N?N.prom:null, N?N.vprom:null) : vacias)+'</tr>';
   }
   const fila = (r, i) => porSA
     ? '<tr'+(dvSA===r.s.cui?' class="act"':'')+'><td class="n nro">'+i+'</td><td><a href="#dv-uts" class="dvsa" data-dvsa="'+r.s.cui+'">'+esc(r.s.sa)+'</a><span class="sub2">CG '+esc(r.s.cg)+'</span></td>'+
-      '<td class="n">'+nf0.format(r.n)+'</td>'+celdas(r, N?N.prom:null)+'</tr>'
+      '<td class="n">'+nf0.format(r.n)+'</td>'+celdas(r, N?N.prom:null, N?N.vprom:null)+'</tr>'
     : '<tr><td class="n nro">'+i+'</td><td><a href="#" class="salink" data-ut="'+esc(r.ut)+'" title="Ver los servicios de '+esc(r.ut)+'">'+esc(r.ut)+'</a></td>'+
-      '<td class="n">'+r.n+'<span class="sub2">de '+r.e+' esperados</span></td>'+(r.n ? celdas(r, N?N.prom:null) : vacias)+'</tr>';
+      '<td class="n">'+r.n+'<span class="sub2">de '+r.e+' esperados</span></td>'+(r.n ? celdas(r, N?N.prom:null, N?N.vprom:null) : vacias)+'</tr>';
   t.innerHTML = '<thead><tr><th class="n nro">N°</th>'+dvCols(porSA).map(c=>'<th class="sort'+(c[2]?' n':'')+'" tabindex="0" data-dvk="'+c[0]+'" aria-sort="'+(dvOrdK===c[0]?(dvOrdD>0?'ascending':'descending'):'none')+'" title="Ordenar por '+c[1].toLowerCase()+'">'+c[1]+'</th>').join('')+'</tr></thead><tbody>'+
-    nacFila+utFila+(rows.length ? rows.map((r,i)=>fila(r,i+1)).join('') : '<tr><td></td><td colspan="8" style="color:var(--muted)">Sin servicios con datos de diversidad en esta selección.</td></tr>')+'</tbody>';
+    nacFila+utFila+(rows.length ? rows.map((r,i)=>fila(r,i+1)).join('') : '<tr><td></td><td colspan="7" style="color:var(--muted)">Sin servicios con datos de diversidad en esta selección.</td></tr>')+'</tbody>';
 }
 function dvEdades(L, hf){
   const t = $('#dvEdT');

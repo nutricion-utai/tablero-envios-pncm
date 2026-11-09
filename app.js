@@ -97,7 +97,7 @@ function llenarFiltros(){
   $('#fCG').value = CG ? UT+'||'+CG : '';
   const S = D.sa.filter(s=>(UT==='TODAS' ? enSec(s.ut) : s.ut===UT) && (!CG || nCG(s.cg)===CG)).sort((a,b)=>a.sa.localeCompare(b.sa,'es'));
   if (SAF && !S.some(s=>s.cui===SAF)) SAF = '';
-  $('#fSAF').innerHTML = '<option value="">Todos los servicios ('+S.length+')</option>'+S.map(s=>'<option value="'+s.cui+'">'+esc(s.sa)+(CG?'':' · CG '+esc(s.cg))+(UT==='TODAS'?' · '+esc(s.ut):'')+'</option>').join('');
+  $('#fSAF').innerHTML = '<option value="">Todos los servicios ('+S.length+')</option>'+S.map(s=>'<option value="'+s.cui+'">'+esc(s.sa)+(CG?'':' · CG '+(s.cgCod?esc(s.cgCod)+' ':'')+esc(s.cg))+(UT==='TODAS'?' · '+esc(s.ut):'')+'</option>').join('');
   $('#fSAF').value = SAF;
   try{ localStorage.setItem('envios_sec',SEC); localStorage.setItem('envios_ut',UT); localStorage.setItem('envios_cg',CG); localStorage.setItem('envios_saf',SAF); }catch(_){}
   const lb = $('#fLimpiar'); if (lb) lb.disabled = !(SEC || UT!=='TODAS' || CG || SAF);
@@ -1117,6 +1117,7 @@ function resumenPorUT(){
       reenv:sum(ss.map(s=>s.reenv)), fecha:ss.map(s=>s.fecha).sort().pop()};
   });
 }
+const sinTilde = t => String(t).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 function detalle(){
   const porUT = UT==='TODAS';
   $('#detalle').hidden = false;
@@ -1125,14 +1126,17 @@ function detalle(){
   $('#detLede').textContent = porUT
     ? 'Resumen de los envíos vigentes de cada UT/OCT, con la misma estructura del detalle por servicio. Toque una fila para ver los servicios alimentarios de esa UT/OCT; toque los servicios con días bajo la meta para ver cuáles son y sus fechas. Toque un encabezado para ordenar.'
     : 'Servicios alimentarios de la UT/OCT filtrada. Toque una fila para ver el pedido y el menú de ese servicio; toque los días bajo la meta para ir al menú de esos días. Toque un encabezado para ordenar.';
-  $('#q').placeholder = porUT ? 'Nombre de la UT/OCT' : 'Nombre, CUI o comité de gestion'.replace('gestion','gestión');
+  $('#q').placeholder = porUT ? 'Nombre de la UT/OCT' : 'Servicio, CUI, comité o código del CG';
   const q = $('#q').value.trim().toLowerCase();
+  // búsqueda sin tildes; cada palabra debe aparecer en el nombre o CUI del servicio, o en el nombre o código del CG
+  const qp = sinTilde(q).split(/\s+/).filter(Boolean);
+  const coincide = s => { const h = s._qh || (s._qh = sinTilde([s.sa, s.cui, s.cg, s.cgCod||''].join(' ').toLowerCase())); return qp.every(w=>h.includes(w)); };
   const ord = (a,b)=> (a[sortK]>b[sortK]?1:a[sortK]<b[sortK]?-1:0)*sortD;
   const C = porUT ? colsUT : cols;
   let filas;
   if (porUT){ openCui = null; filas = resumenPorUT().filter(o=>!q || o.ut.toLowerCase().includes(q)).sort(ord); }
   else { sel().forEach(s=>{ s.apMal = s.dias ? evaluarAporte(s).malos.length : -1; });
-    filas = sel().filter(s=>!q || (s.sa+' '+s.cui+' '+s.cg).toLowerCase().includes(q)).sort(ord); }
+    filas = sel().filter(s=>!qp.length || coincide(s)).sort(ord); }
   $('#tSA').innerHTML = '<thead><tr>'+C.map(c=>'<th class="sort'+(c[3]?' n':'')+'" tabindex="0" data-k="'+c[0]+'" aria-sort="'+(sortK===c[0]?(sortD>0?'ascending':'descending'):'none')+'">'+c[1]+(sortK===c[0]?(sortD>0?' ↑':' ↓'):'')+'</th>').join('')+'</tr></thead><tbody>'+
     filas.map(o=> porUT
       ? '<tr class="click" data-ut="'+esc(o.ut)+'" title="Ver los servicios alimentarios de '+esc(o.ut)+'">'+C.map(c=>'<td'+(c[3]?' class="n"':'')+'>'+c[2](o)+'</td>').join('')+'</tr>'
@@ -1163,7 +1167,7 @@ function drawer(){
   const m = D.menu.filter(r=>r[0]===s.cui);
   const porT = D.tiempos.map((t,i)=>m.filter(r=>r[1]===i).sort((a,b)=>b[3]-a[3]));
   $('#drawer').innerHTML = '<div class="drawer"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><h3>'+esc(s.sa)+'</h3><span class="chip blue">CUI '+s.cui+'</span></div>'+
-    '<p class="note" style="margin:2px 0 0">'+'<button type="button" class="ghost" style="float:right;font:inherit;font-size:13px;padding:4px 10px;border:1px solid var(--azul);color:var(--azul);background:var(--surface);border-radius:8px;cursor:pointer" onclick="__verMenu(\''+s.cui+'\')">Ver menú semanal</button>'+esc(s.ut)+' · '+esc(s.prov)+', '+esc(s.dist)+' · Comité de gestión '+esc(s.cg)+'</p>'+
+    '<p class="note" style="margin:2px 0 0">'+'<button type="button" class="ghost" style="float:right;font:inherit;font-size:13px;padding:4px 10px;border:1px solid var(--azul);color:var(--azul);background:var(--surface);border-radius:8px;cursor:pointer" onclick="__verMenu(\''+s.cui+'\')">Ver menú semanal</button>'+esc(s.ut)+' · '+esc(s.prov)+', '+esc(s.dist)+' · Comité de gestión '+esc(s.cg)+(s.cgCod?' (código '+esc(s.cgCod)+')':'')+'</p>'+
     '<div class="facts"><div><b>Usuarios</b>'+s.u.join(' · ')+' <span style="color:var(--muted)">(6-8 · 9-11 · 12-23 · 24-36 m)</span></div><div><b>Actores comunales</b>'+s.ac.join(' · ')+' <span style="color:var(--muted)">(MC · MG · SC)</span></div>'+
     '<div><b>Presupuesto calculado</b>'+S2(s.presT)+' <span style="color:var(--muted)">('+AMB[s.amb].toLowerCase()+(s.rn?' · '+s.rn.toLowerCase():'')+')</span><br><span style="color:var(--muted);font-size:13px">Registrado en el envío: '+S2(s.presReg)+'</span></div><div><b>Costo por día</b>S/ '+nf2.format(s.ninoDia)+' por niño · S/ '+nf2.format(s.acDia)+' por AC<br><span style="color:var(--muted);font-size:13px">Incluye saldos de no perecibles por '+S2(s.saldo[0]+s.saldo[1])+'</span></div><div><b>Costo</b>'+S2(s.costT)+' ('+nf0.format(s.ejec*100)+' %)</div><div><b>Días con menú</b>'+s.dias+'</div><div><b>Proveedor de no perecibles</b>'+provRuc(s,'NP')+'</div><div><b>Proveedor de perecibles</b>'+provRuc(s,'P')+'</div></div>'+
     '<div class="grid2"><div><h3 style="font-size:15px;margin:6px 0">Pedido: 10 alimentos de mayor costo</h3><div id="dF"></div></div><div><h3 style="font-size:15px;margin:6px 0">Menú: preparaciones por tiempo de comida</h3><div style="font-size:13px">'+
@@ -2286,7 +2290,7 @@ function dvDetalle(){
         return '<td class="n"'+(r[2]<DVM.MIN_DIAS_SEMANA?' style="color:var(--muted)" title="Semana de '+r[2]+(r[2]===1?' día':' días')+': no entra en el promedio"':' title="'+r[2]+' días de atención"')+'>'+n+'<span class="sub2">'+r[2]+(r[2]===1?' día':' días')+'</span></td>'; }).join('')+'</tr>').join('')+'</tbody></table></div>'; })();
   box.hidden = false;
   box.innerHTML = '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><h3>'+esc(s.sa)+'</h3><button type="button" class="rc-x" id="dvDetX" aria-label="Cerrar la ficha">×</button></div>'+
-    '<div class="facts"><div><b>UT/OCT</b>'+esc(s.ut)+'</div><div><b>Comité de gestión</b>'+esc(s.cg)+'</div><div><b>Distrito</b>'+esc(s.dist||'—')+'</div>'+
+    '<div class="facts"><div><b>UT/OCT</b>'+esc(s.ut)+'</div><div><b>Comité de gestión</b>'+esc(s.cg)+(s.cgCod?' (código '+esc(s.cgCod)+')':'')+'</div><div><b>Distrito</b>'+esc(s.dist||'—')+'</div>'+
     '<div><b>Niñas y niños</b>'+[0,1,2,3].filter(g=>s.u[g]).map(g=>GRC[g]+': '+s.u[g]).join(' · ')+'</div>'+
     (x?'<div><b>Puntaje promedio</b>'+dvF(x.prom)+' (de '+x.min+' a '+x.max+')</div><div><b>Alimentos distintos por semana</b>'+dvV(x.vprom)+'</div>':'')+'</div>'+
     '<div class="dv-leg">'+DVM.GRUPOS.map((g,j)=>'<span class="'+DV_GRC[j]+'"><i class="sw"></i>'+esc(g)+'</span>').join('')+'</div>'+

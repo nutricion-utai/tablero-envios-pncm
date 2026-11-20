@@ -547,8 +547,8 @@ function nino(){
 }
 
 // ================= ALIMENTOS =================
-// Medida: total del mes o por persona y día (personas-día: niñas, niños y actores comunales por los días de atención del mes de
-// cada servicio). Variedades de un mismo alimento juntas o separadas. Comparación con el mes anterior. Los dos gráficos de arriba
+// Medida: total del mes o por usuario por mes (el pedido del mes entre las niñas y niños usuarios de los servicios, cada servicio
+// una vez). Variedades de un mismo alimento juntas o separadas. Comparación con el mes anterior. Los dos gráficos de arriba
 // y el explorador comparten la segmentación: tocar una barra filtra el explorador y lo elegido en él filtra los gráficos.
 let metric = 's', gMet = 's', aBase = 't', aVar = false, aCmp = false;
 const segSet = (a, b, primero) => { $(a).setAttribute('aria-pressed', String(primero)); $(b).setAttribute('aria-pressed', String(!primero)); };
@@ -575,13 +575,15 @@ const aNom = k => k<0 ? 'Alimento que no se pide este mes' : alN(aVar ? FAMN[k][
 const minIni = t => { t = String(t||''); return /^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]/.test(t) ? t.charAt(0).toLowerCase()+t.slice(1) : t; };   // «Leche UHT entera» → «leche UHT entera»
 const aVarTxt = k => aVar && k>=0 && FAMV[k].length>1 ? '<br>'+FAMV[k].length+' variedades: '+FAMV[k].map(i=>esc(alN(D.alimentos[i][0]))).join(', ') : '';
 
-// medida: total del mes o por persona y día
-const pdS = s => !s ? 0 : ((s.ninos!=null ? s.ninos : sum(s.u||[])) + (s.acs!=null ? s.acs : sum(s.ac||[]))) * (s.dias||0);   // también con los datos crudos de otro mes
-const vB = (o, m, pd) => aBase==='pd' ? (pd ? (m==='s' ? o.s/pd : o.kg*1000/pd) : 0) : (m==='s' ? o.s : o.kg);
-const nB = (v, m) => aBase==='pd' ? (m==='s' ? 'S/ '+nf2.format(v) : (Math.abs(v)<10 ? nf1 : nf0).format(v)) : (m==='s' ? S0(v) : fKg(v));
-const uB = m => aBase==='pd' ? (m==='s' ? 'por persona y día' : 'g o mL por persona y día') : (m==='s' ? '' : 'kg o L');
+// medida: total del mes o por usuario por mes (PD = usuarios de la selección: niñas y niños de cada servicio, una vez)
+const pdS = s => !s ? 0 : (s.ninos!=null ? s.ninos : sum(s.u||[]));   // también con los datos crudos de otro mes
+const nf3 = new Intl.NumberFormat('es-PE',{maximumFractionDigits:3,minimumFractionDigits:3});
+const kgU = v => (Math.abs(v)>=10 ? nf1 : Math.abs(v)>=0.1 || !v ? nf2 : nf3).format(v);   // kg o L por usuario: con decimales según el tamaño
+const vB = (o, m, pd) => aBase==='pd' ? (pd ? (m==='s' ? o.s/pd : o.kg/pd) : 0) : (m==='s' ? o.s : o.kg);
+const nB = (v, m) => aBase==='pd' ? (m==='s' ? 'S/ '+nf2.format(v) : kgU(v)) : (m==='s' ? S0(v) : fKg(v));
+const uB = m => aBase==='pd' ? (m==='s' ? 'por usuario por mes' : 'kg o L por usuario por mes') : (m==='s' ? '' : 'kg o L');
 const fB = (v, m) => nB(v, m) + (uB(m) ? ' '+uB(m) : '');
-const qB = m => (m==='s' ? 'costo' : 'volumen') + (aBase==='pd' ? ' por persona y día' : '');
+const qB = m => (m==='s' ? 'costo' : 'volumen') + (aBase==='pd' ? ' por usuario por mes' : '');
 const colT = t => t ? 'var(--magenta)' : 'var(--azul)';
 const LEG_T = '<span><i class="sw" style="background:var(--azul)"></i>No perecible</span><span><i class="sw" style="background:var(--magenta)"></i>Perecible</span>';
 
@@ -623,7 +625,7 @@ function cmpEstado(R){
   const P = prevDatos(); if (P===undefined) return {cargando: true}; if (!P) return null;
   return {P, Rp: prevFilas(P)};
 }
-// personas-día de los servicios de las filas (cada servicio una vez); con UT/OCT elegidas en el explorador, solo las de esas UT/OCT
+// usuarios (niñas y niños) de los servicios de las filas (cada servicio una vez); con UT/OCT elegidas en el explorador, solo las de esas UT/OCT
 function pdFilas(R, P){ const vist = new Set(); let t = 0;
   R.forEach(r=>{ if (vist.has(r.c) || (XS.ut.size && !XS.ut.has(r.ut))) return; vist.add(r.c); t += P ? ((P.sa[r.c]||{}).pd||0) : pdS(byCui[r.c]); }); return t; }
 
@@ -632,13 +634,13 @@ function aliCtl(C, R){
   segSet('#aBaseT', '#aBaseP', aBase==='t'); $('#aVar').checked = aVar; $('#aCmp').checked = aCmp && !!mesAnt; $('#aCmp').disabled = !mesAnt;
   $('#aCmpL').textContent = mesAnt ? 'Comparar con '+mesAntTxt : 'Comparar con el mes anterior (no hay datos publicados)';
   const t = [];
-  if (aBase==='pd') t.push('<b>Por persona y día:</b> el pedido entre las personas-día atendidas (niñas, niños y actores comunales por los días de atención del mes de cada servicio). Permite comparar UT/OCT y servicios de distinto tamaño; el pedido incluye las raciones de los actores comunales.');
+  if (aBase==='pd') t.push('<b>Por usuario por mes:</b> el pedido del mes entre las niñas y niños usuarios de los servicios. Permite comparar UT/OCT y servicios de distinto tamaño; el pedido incluye las raciones de los actores comunales, que no se cuentan como usuarios.');
   if (aVar) t.push('<b>Variedades juntas:</b> se suman las variedades de un mismo alimento dentro de su grupo (papa canchán, papa yungay y papa amarilla cuentan como papa).');
   if (aCmp && C && C.cargando) t.push('Cargando los pedidos de '+esc(mesAntTxt)+'…');
   else if (aCmp && C && C.P){ const nA = new Set(C.Rp.map(r=>r.c)).size, nN = new Set((R||[]).map(r=>r.c)).size;
     t.push('<b>Comparado con '+esc(mesAntTxt)+'</b> (raya negra en los gráficos): '+nf0.format(nA)+' servicios con pedido en la selección, frente a '+nf0.format(nN)+' este mes.'+
       (Math.min(nA, nN) < 0.8*Math.max(nA, nN) ? ' Como el número de servicios es muy distinto, la comparación es solo referencial.' : '')+
-      (aBase==='t' ? ' Con «Total del mes», las diferencias también reflejan cuántos servicios enviaron; «Por persona y día» las compara sin ese efecto.' : '')); }
+      (aBase==='t' ? ' Con «Total del mes», las diferencias también reflejan cuántos servicios enviaron; «Por usuario por mes» las compara sin ese efecto.' : '')); }
   else if (aCmp && mesAnt) t.push('No hay pedidos publicados de '+esc(mesAntTxt)+' para comparar.');
   $('#aliN').innerHTML = t.join(' ');
 }
@@ -663,7 +665,7 @@ function foods(){
   const pA = C && C.P ? agg(C.Rp.filter(r=>xPasa(r, 'a')), r=>aK(r.a), false) : null;
   const m = metric, totA = sum(A.map(o=>m==='s'?o.s:o.kg));
   const top = A.sort((x,y)=>vB(y,m,PD)-vB(x,m,PD)).slice(0,15);
-  $('#hFood').textContent = (aVar ? 'Los 15 alimentos (con variedades juntas)' : 'Los 15 alimentos')+' con más peso en el pedido'+(aBase==='pd' ? ', por persona y día' : '');
+  $('#hFood').textContent = (aVar ? 'Los 15 alimentos (con variedades juntas)' : 'Los 15 alimentos')+' con más peso en el pedido'+(aBase==='pd' ? ', por usuario por mes' : '');
   $('#lFood').innerHTML = LEG_T + (pA ? '<span><i class="mk"></i>'+esc(mesAntTxt)+'</span>' : '');
   hbars($('#cFood'), top.map(o=>{ const v = vB(o,m,PD), pv = pA ? vB(pA[o.k]||{s:0,kg:0}, m, PDp) : null;
     return {name: aNom(o.k), value: v, color: colT(o.t), label: nB(v, m), pick: 'a:'+o.k, on: XS.a.has(o.k), mark: pv,
@@ -677,7 +679,7 @@ function foods(){
     const RG = R.filter(r=>xPasa(r, 'a')), G = Object.values(agg(RG, r=>aK(r.a), true));
     const pG = C && C.P ? agg(C.Rp.filter(r=>xPasa(r, 'a')), r=>aK(r.a), false) : null;
     const T = sum(G.map(o=>M==='s'?o.s:o.kg));
-    $('#hGrupo').textContent = (M==='s' ? 'Costo' : 'Volumen')+' de los alimentos de '+capG(D.grupos[uno]).toLowerCase()+(aBase==='pd' ? ', por persona y día' : '');
+    $('#hGrupo').textContent = (M==='s' ? 'Costo' : 'Volumen')+' de los alimentos de '+capG(D.grupos[uno]).toLowerCase()+(aBase==='pd' ? ', por usuario por mes' : '');
     $('#npNote').textContent = G.length+(G.length===1 ? ' alimento' : ' alimentos')+(aVar ? ' (con variedades juntas)' : '')+' del grupo, '+fB(vB({s:sum(G.map(o=>o.s)), kg:sum(G.map(o=>o.kg))}, M, PD), M)+' en total. Toque un alimento para filtrar el explorador.';
     $('#lGrupo').innerHTML = LEG_T + (pG ? '<span><i class="mk"></i>'+esc(mesAntTxt)+'</span>' : '');
     hbars($('#cGrupo'), G.sort((x,y)=>vB(y,M,PD)-vB(x,M,PD)).map(o=>{ const v = vB(o,M,PD), pv = pG ? vB(pG[o.k]||{s:0,kg:0}, M, PDp) : null;
@@ -690,7 +692,7 @@ function foods(){
   const pG = C && C.P ? agg(C.Rp.filter(r=>xPasa(r, 'g')), r=>r.g, false) : null;
   const np = sum(G.map(o=>M==='s'?o.np.s:o.np.kg)), p = sum(G.map(o=>M==='s'?o.p.s:o.p.kg)), T = np + p;
   const fm = v => aBase==='pd' ? fB(vB({s:v, kg:v}, M, PD), M) : M==='s' ? S0(v) : fKg(v)+' kg o L';
-  $('#hGrupo').textContent = (M==='s' ? 'Costo' : 'Volumen')+' por grupo de alimentos'+(aBase==='pd' ? ', por persona y día' : '');
+  $('#hGrupo').textContent = (M==='s' ? 'Costo' : 'Volumen')+' por grupo de alimentos'+(aBase==='pd' ? ', por usuario por mes' : '');
   $('#npNote').textContent = 'Del '+(M==='s'?'costo':'volumen')+' total'+(aBase==='pd' ? ' ('+fm(T)+')' : '')+', '+P1(T?np/T:0)+' corresponde a no perecibles ('+fm(np)+') y '+P1(T?p/T:0)+' a perecibles ('+fm(p)+'). Toque un grupo para ver sus alimentos.';
   $('#lGrupo').innerHTML = LEG_T + (pG ? '<span><i class="mk"></i>'+esc(mesAntTxt)+'</span>' : '');
   hbars($('#cGrupo'), G.sort((x,y)=>vB(y,M,PD)-vB(x,M,PD)).map(o=>{ const v = vB(o,M,PD), pv = pG ? vB(pG[o.k]||{s:0,kg:0}, M, PDp) : null;
@@ -755,7 +757,7 @@ function xSlicer(d, R, PD, C){
   const base = new Map();
   R.forEach(r=>{ const k = xKey(r,d); if (!base.has(k)) base.set(k, {k, s:0, kg:0}); });
   R.forEach(r=>{ if (!xPasa(r,d)) return; const o = base.get(xKey(r,d)); o.s += r.s; o.kg += r.kg; });
-  // por persona y día: cada UT/OCT con sus propias personas-día; los demás segmentadores, con las de la selección
+  // por usuario por mes: cada UT/OCT con sus propios usuarios; los demás segmentadores, con los de la selección
   const pdUT = (L, P) => { const m = {}, vist = new Set(); L.forEach(r=>{ if (vist.has(r.c)) return; vist.add(r.c); m[r.ut] = (m[r.ut]||0) + (P ? ((P.sa[r.c]||{}).pd||0) : pdS(byCui[r.c])); }); return m; };
   const pdU = d==='ut' && aBase==='pd' ? pdUT(R) : null;
   const val = o => vB(o, xMet, pdU ? pdU[o.k] : PD);
@@ -805,8 +807,8 @@ function explorar(){
   const cmpTxt = m => !aCmp ? '' : C && C.cargando ? '<span class="cmp">'+esc(mesAntTxt)+': cargando…</span>'
     : totP ? '<span class="cmp">'+esc(mesAntTxt)+': '+fB(vB(totP, m, PDp), m)+' (<b>'+dPct(vB(tot, m, PD), vB(totP, m, PDp))+'</b>)</span>' : '';
   const tiles = [
-    ['Monto pedido', nB(vB(tot,'s',PD),'s'), (aBase==='pd' ? 'por persona y día · '+S0(tS)+' en el mes' : algo && totS ? P1(tS/totS)+' del monto de la selección' : 'pedido vigente, sin saldos')+cmpTxt('s')],
-    ['Cantidad', nB(vB(tot,'kg',PD),'kg'), (aBase==='pd' ? 'g o mL por persona y día · '+fKg(tK)+' kg o L en el mes' : 'kg o L')+(nA===1 && tK ? ' · '+pKg(tS,tK)+' por kg o L' : '')+cmpTxt('kg')],
+    ['Monto pedido', nB(vB(tot,'s',PD),'s'), (aBase==='pd' ? 'por usuario por mes · '+S0(tS)+' en el mes' : algo && totS ? P1(tS/totS)+' del monto de la selección' : 'pedido vigente, sin saldos')+cmpTxt('s')],
+    ['Cantidad', nB(vB(tot,'kg',PD),'kg'), (aBase==='pd' ? 'kg o L por usuario por mes · '+fKg(tK)+' kg o L en el mes' : 'kg o L')+(nA===1 && tK ? ' · '+pKg(tS,tK)+' por kg o L' : '')+cmpTxt('kg')],
     ['Alimentos no perecibles', nf0.format(nNP), aVar ? 'distintos, con variedades juntas' : 'distintos en el pedido'],
     ['Alimentos perecibles', nf0.format(nP), aVar ? 'distintos, con variedades juntas' : 'distintos en el pedido'],
     ['Servicios alimentarios', nf0.format(nS), 'que los piden'],
@@ -825,13 +827,13 @@ function explorar(){
   const L = Object.values(m).sort((x,y)=>{ const a = val[xSortK](x), b = val[xSortK](y);
     const c = typeof a==='string' ? a.localeCompare(b,'es') : (a>b?1:a<b?-1:0); return c*xSortD || (y.s-x.s); });
   const cols = [['n','Alimento',0],['g','Grupo',0],['t','Tipo',0],['kg','Cantidad<br>(kg o L)',1],['v','Monto<br>(S/)',1],['pc','% del<br>monto',1],['p','S/ por<br>kg o L',1]]
-    .concat(conPD ? [['pg','g o mL por<br>persona y día',1],['ps','S/ por<br>persona y día',1]] : [])
-    .concat(conC ? [['pa',esc(mesAntTxt.replace(/^./,c=>c.toUpperCase()))+'<br>('+(xMet==='s'?'monto':'cantidad')+(conPD?' por p. y día':'')+')',1],['dv','Variación',1]] : [])
+    .concat(conPD ? [['pg','kg o L por<br>usuario por mes',1],['ps','S/ por<br>usuario por mes',1]] : [])
+    .concat(conC ? [['pa',esc(mesAntTxt.replace(/^./,c=>c.toUpperCase()))+'<br>('+(xMet==='s'?'monto':'cantidad')+(conPD?' por usuario':'')+')',1],['dv','Variación',1]] : [])
     .concat([['sv','Servicios',1],['u','UT/OCT',1]]);
   const vis = xTodos ? L : L.slice(0,25);
   const tP = totP ? vB(totP, xMet, PDp) : 0, tC = vB(tot, xMet, PD);
   $('#xTabN').textContent = L.length ? L.length+(L.length===1?' alimento':' alimentos')+(aVar?' (con variedades juntas)':'')+' en la selección. Toque un encabezado para ordenar; toque un alimento para filtrar por él. El precio por kg o L es el promedio ponderado: monto entre cantidad.'+
-    (conC ? ' La variación compara '+(xMet==='s'?'el monto':'la cantidad')+(conPD?' por persona y día':'')+' con '+mesAntTxt+'.' : '') : '';
+    (conC ? ' La variación compara '+(xMet==='s'?'el monto':'la cantidad')+(conPD?' por usuario por mes':'')+' con '+mesAntTxt+'.' : '') : '';
   const celdaVar = (c, p) => '<td class="n '+dCls(c,p)+'">'+dPct(c,p)+'</td>';
   $('#xTab').innerHTML = !L.length ? '' : '<thead><tr>'+cols.map(([k,t,n])=>'<th class="'+(k==='pc'?'':'sort')+(n?' n':'')+'"'+(k==='pc'?'':' tabindex="0" data-xs="'+k+'"')+'>'+t+(xSortK===k?(xSortD>0?' ↑':' ↓'):'')+'</th>').join('')+'</tr></thead><tbody>'+
     vis.map(o=>'<tr><td><a href="#" class="salink" data-xa="'+o.k+'" title="'+esc((XS.a.size===1 && XS.a.has(o.k)) ? 'Quitar el filtro de este alimento' : 'Filtrar por este alimento')+'">'+esc(aNom(o.k))+'</a>'+(aVar && FAMV[o.k].length>1 ? '<span class="sub2" data-tip="'+esc(aVarTxt(o.k).slice(4))+'">'+FAMV[o.k].length+' variedades</span>' : '')+'</td><td>'+esc(capG(D.grupos[o.g]))+'</td><td><i class="sw" style="background:'+colT(o.t)+'"></i>'+TIPO_N[o.t]+'</td>'+
@@ -929,8 +931,8 @@ async function descargarDetalle(btn){
     const selTxt = SAF ? (byCui[SAF]||{}).sa : CG ? utN(UT)+' · CG '+CG : UT!=='TODAS' ? utN(UT) : SEC ? nUTs+' UT/OCT' : 'Todas las UT/OCT';
     const mA = mesAntTxt.replace(/^./,c=>c.toUpperCase()), q = xMet==='s' ? 'monto' : 'cantidad';
     const cab = ['N°','Alimento','Grupo','Tipo','Cantidad (kg o L)','Monto (S/)','% del monto','S/ por kg o L']
-      .concat(U.conPD ? ['g o mL por persona y día','S/ por persona y día'] : [])
-      .concat(U.conC ? [mA+' ('+q+(U.conPD?' por persona y día':'')+')', 'Variación'] : [])
+      .concat(U.conPD ? ['kg o L por usuario por mes','S/ por usuario por mes'] : [])
+      .concat(U.conC ? [mA+' ('+q+(U.conPD?' por usuario por mes':'')+')', 'Variación'] : [])
       .concat(['Servicios','UT/OCT'], aVar ? ['Variedades'] : []);
     const filas = U.L.map((o,i)=>{ const pv = U.conC ? U.pvO(o) : 0, cu = U.conC ? U.cuO(o) : 0;
       return [i+1, aNom(o.k), capG(D.grupos[o.g]), TIPO_N[o.t], o.kg, o.s, U.tS ? o.s/U.tS : 0, o.kg>0 ? o.s/o.kg : null]
@@ -943,14 +945,14 @@ async function descargarDetalle(btn){
       .concat([U.nS, U.nU], aVar ? [''] : []);
     const notas = ['Selección: '+selTxt+(U.elegido ? ' · segmentación: '+U.elegido : '')+' · datos al '+corte,
       'Pedido vigente (no perecibles y perecibles), sin el valor de los saldos usados. Las cantidades suman kilos y litros.'+
-      (U.conPD ? ' Por persona y día: el pedido entre las personas-día atendidas (niñas, niños y actores comunales por los días de atención del mes).' : '')+
+      (U.conPD ? ' Por usuario por mes: el pedido del mes entre las niñas y niños usuarios de los servicios (incluye las raciones de los actores comunales, que no se cuentan como usuarios).' : '')+
       (aVar ? ' Variedades juntas: se suman las variedades de un mismo alimento dentro de su grupo.' : '')+
-      (U.conC ? ' La variación compara el '+q+(U.conPD?' por persona y día':'')+' con '+mesAntTxt+'.' : '')];
+      (U.conC ? ' La variación compara el '+q+(U.conPD?' por usuario por mes':'')+' con '+mesAntTxt+'.' : '')];
     const h = X.utils.aoa_to_sheet([['Detalle del pedido por alimento · '+mesL], [notas[0]], [notas[1]], [], cab].concat(filas, [tot]));
     const nc = cab.length, r0 = 5, r1 = r0 + filas.length;
     const fmt = (c, z) => { for (let r = r0; r <= r1; r++){ const x = h[X.utils.encode_cell({r, c})]; if (x && typeof x.v==='number') x.z = z; } };
     fmt(4, '#,##0.0'); fmt(5, '#,##0.00'); fmt(6, '0.0%'); fmt(7, '#,##0.00');
-    let c = 8; if (U.conPD){ fmt(c++, '#,##0.0'); fmt(c++, '#,##0.00'); } if (U.conC){ fmt(c++, U.conPD ? '#,##0.00' : (xMet==='s' ? '#,##0.00' : '#,##0.0')); fmt(c++, '+0.0%;-0.0%;0.0%'); }
+    let c = 8; if (U.conPD){ fmt(c++, '#,##0.000'); fmt(c++, '#,##0.00'); } if (U.conC){ fmt(c++, U.conPD ? (xMet==='s' ? '#,##0.00' : '#,##0.000') : (xMet==='s' ? '#,##0.00' : '#,##0.0')); fmt(c++, '+0.0%;-0.0%;0.0%'); }
     h['!cols'] = cab.map((t,i)=>({wch: i===0 ? 5 : i===1 ? 40 : i===2 ? 32 : i===3 ? 13 : t==='Variedades' ? 60 : 16}));
     h['!autofilter'] = {ref: 'A5:'+X.utils.encode_col(nc-1)+r1};
     h['!merges'] = [0,1,2].map(r=>({s:{r, c:0}, e:{r, c:nc-1}}));

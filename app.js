@@ -2010,6 +2010,27 @@ const cargarH2I = () => window.htmlToImage ? Promise.resolve(window.htmlToImage)
   s.onload = ()=> window.htmlToImage ? ok(window.htmlToImage) : mal(new Error('sin generador'));
   s.onerror = ()=>{ H2I = null; mal(new Error('No se pudo cargar el generador de imágenes')); };
   document.head.appendChild(s); }));
+// Fuentes del tablero (Archivo y Source Sans 3) incrustadas en el PNG. html-to-image no puede leer la hoja de Google Fonts
+// (es de otro dominio): sin esto la imagen salía con fuentes de reemplazo (Segoe UI o Arial, más anchas) y, como conserva
+// las alturas medidas en la página, el texto que pasaba a dos líneas se montaba sobre el borde del panel y el pie; además
+// incrustaba las fuentes que inyectan las extensiones del navegador (varios MB). Se descargan una sola vez los subconjuntos
+// latin y latin-ext; Google entrega algunos archivos con tipo text/html, así que el tipo del data URL sale de format().
+const fuentesPNG = () => window.__fuentesPNG || (window.__fuentesPNG = (async () => {
+  const l = document.querySelector('link[rel="stylesheet"][href*="fonts.googleapis.com"]');
+  if (!l) throw new Error('sin hoja de fuentes');
+  const r0 = await fetch(l.href); if (!r0.ok) throw new Error('hoja de fuentes '+r0.status);
+  const caras = ((await r0.text()).match(/\/\*\s*[\w-]+\s*\*\/\s*@font-face\s*\{[^}]*\}/g) || []).filter(b => /\/\*\s*latin(-ext)?\s*\*\//.test(b));
+  const RX = /url\((['"]?)(https:\/\/[^)'"]+)\1\)\s*format\((['"]?)([\w-]+)\3\)/g, urls = new Map();
+  caras.forEach(b => { for (const m of b.matchAll(RX)) urls.set(m[2], m[4]); });
+  if (!urls.size) throw new Error('sin fuentes en la hoja');
+  const datos = {};
+  await Promise.all([...urls].map(async ([u, fmt]) => {
+    const r = await fetch(u); if (!r.ok) throw new Error('fuente '+r.status);
+    const b = new Blob([await r.arrayBuffer()], {type: 'font/'+fmt});
+    datos[u] = await new Promise((ok, mal) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = mal; fr.readAsDataURL(b); });
+  }));
+  return caras.map(b => b.replace(RX, (m, q, u, q2, fmt) => 'url('+datos[u]+') format("'+fmt+'")')).join('\n');
+})().catch(e => { window.__fuentesPNG = null; throw e; }));
 const slugPNG = t => String(t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,70);
 const ICO_PNG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>';
 function botonesPNG(){
@@ -2047,6 +2068,8 @@ async function exportarPNG(btn){
   let w = null;
   try {
     const H = await cargarH2I();
+    let fem = null;
+    try { fem = await fuentesPNG(); } catch(e){ console.warn('PNG: no se pudieron incrustar las fuentes', e); }
     const {ante, tit} = titulosPNG(p);
     const cs = getComputedStyle(document.body);
     let ancho = p.offsetWidth; [p, ...p.querySelectorAll('.scroll, table')].forEach(x=>{ ancho = Math.max(ancho, x.scrollWidth); });
@@ -2066,8 +2089,9 @@ async function exportarPNG(btn){
     w.appendChild(pie);
     document.body.appendChild(w);
     const op = {pixelRatio: 2, style: {position:'static', left:'0', top:'0'}};
+    if (fem) op.fontEmbedCSS = fem; else op.skipFonts = true;   // sin las fuentes del tablero no se incrustan las ajenas
     let blob;
-    try { blob = await H.toBlob(w, op); } catch(e){ blob = await H.toBlob(w, Object.assign({skipFonts:true}, op)); }   // si las fuentes no se pueden incrustar
+    try { blob = await H.toBlob(w, op); } catch(e){ blob = await H.toBlob(w, Object.assign({}, op, {fontEmbedCSS: null, skipFonts: true})); }   // si las fuentes no se pueden incrustar
     const nom = 'envios_'+D.periodo+'_'+(slugPNG(tit || (p.querySelector('h3')||{}).textContent || (p.id==='sheet' ? 'menu-semanal' : ante)) || 'tabla')+'.png';
     await guardarArchivo(blob, nom);
     btn.innerHTML = txt;
